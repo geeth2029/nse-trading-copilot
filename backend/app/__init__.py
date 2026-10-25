@@ -1,0 +1,1 @@
+"""NSE Trading Copilot API application."""

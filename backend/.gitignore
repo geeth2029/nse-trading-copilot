@@ -1,0 +1,15 @@
+# Local databases, logs, and operator data artifacts
+data/*
+!data/universe/
+data/universe/*
+!data/universe/nse_largecap_current.json
+!data/universe/nse_largecap_current.json.manifest.json
+*.xlsx
+*.xls
+*.db
+*.sqlite
+*.sqlite3
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/

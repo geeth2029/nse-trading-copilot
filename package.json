@@ -1,0 +1,12 @@
+{
+  "name": "nse-trading-copilot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "NSE Trading Copilot - Decision support and trade tracking application for NSE cash equities.",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "test": "npm --prefix frontend run test"
+  }
+}

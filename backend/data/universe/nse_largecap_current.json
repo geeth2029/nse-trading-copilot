@@ -1,0 +1,916 @@
+{
+  "metadata": {
+    "datasetVersion": "AMFI-2026-H2-V1",
+    "sourceName": "AMFI",
+    "sourcePeriodLabel": "Six months ended 30 June 2026",
+    "classificationPeriod": "JUL_DEC_2026",
+    "effectiveFrom": "2026-07-01",
+    "effectiveTo": "2026-12-31",
+    "sourceReference": "amfi_largecap_jan_jun_2026.csv",
+    "sha256Checksum": "5a01d216bcae60cee5493b5f7558137f0ec06ccfba04d2b32e462ada522af3bf",
+    "verifiedAt": "2026-10-25T09:49:05.429778Z",
+    "constituentCount": 100
+  },
+  "constituents": [
+    {
+      "rank": 1,
+      "isin": "INE002A01018",
+      "companyName": "Reliance Industries Ltd",
+      "sourceSymbol": "RELIANCE",
+      "canonicalNseSymbol": "RELIANCE",
+      "upstoxInstrumentKey": "NSE_EQ|INE002A01018",
+      "isTradable": true
+    },
+    {
+      "rank": 2,
+      "isin": "INE040A01034",
+      "companyName": "HDFC Bank Ltd.",
+      "sourceSymbol": "HDFCBANK",
+      "canonicalNseSymbol": "HDFCBANK",
+      "upstoxInstrumentKey": "NSE_EQ|INE040A01034",
+      "isTradable": true
+    },
+    {
+      "rank": 3,
+      "isin": "INE397D01024",
+      "companyName": "Bharti Airtel  Ltd.",
+      "sourceSymbol": "BHARTIARTL",
+      "canonicalNseSymbol": "BHARTIARTL",
+      "upstoxInstrumentKey": "NSE_EQ|INE397D01024",
+      "isTradable": true
+    },
+    {
+      "rank": 4,
+      "isin": "INE062A01020",
+      "companyName": "State Bank Of India",
+      "sourceSymbol": "SBIN",
+      "canonicalNseSymbol": "SBIN",
+      "upstoxInstrumentKey": "NSE_EQ|INE062A01020",
+      "isTradable": true
+    },
+    {
+      "rank": 5,
+      "isin": "INE090A01021",
+      "companyName": "ICICI Bank Ltd.",
+      "sourceSymbol": "ICICIBANK",
+      "canonicalNseSymbol": "ICICIBANK",
+      "upstoxInstrumentKey": "NSE_EQ|INE090A01021",
+      "isTradable": true
+    },
+    {
+      "rank": 6,
+      "isin": "INE467B01029",
+      "companyName": "Tata Consultancy Services Ltd.",
+      "sourceSymbol": "TCS",
+      "canonicalNseSymbol": "TCS",
+      "upstoxInstrumentKey": "NSE_EQ|INE467B01029",
+      "isTradable": true
+    },
+    {
+      "rank": 7,
+      "isin": "INE296A01032",
+      "companyName": "Bajaj Finance Limited",
+      "sourceSymbol": "BAJFINANCE",
+      "canonicalNseSymbol": "BAJFINANCE",
+      "upstoxInstrumentKey": "NSE_EQ|INE296A01032",
+      "isTradable": true
+    },
+    {
+      "rank": 8,
+      "isin": "INE018A01030",
+      "companyName": "Larsen & Toubro Limited",
+      "sourceSymbol": "LT",
+      "canonicalNseSymbol": "LT",
+      "upstoxInstrumentKey": "NSE_EQ|INE018A01030",
+      "isTradable": true
+    },
+    {
+      "rank": 9,
+      "isin": "INE009A01021",
+      "companyName": "Infosys Ltd",
+      "sourceSymbol": "INFY",
+      "canonicalNseSymbol": "INFY",
+      "upstoxInstrumentKey": "NSE_EQ|INE009A01021",
+      "isTradable": true
+    },
+    {
+      "rank": 10,
+      "isin": "INE030A01027",
+      "companyName": "Hindustan Unilever Ltd.",
+      "sourceSymbol": "HINDUNILVR",
+      "canonicalNseSymbol": "HINDUNILVR",
+      "upstoxInstrumentKey": "NSE_EQ|INE030A01027",
+      "isTradable": true
+    },
+    {
+      "rank": 11,
+      "isin": "INE0J1Y01017",
+      "companyName": "LIFE INSURANCE CORPORATION OF INDIA",
+      "sourceSymbol": "LICI",
+      "canonicalNseSymbol": "LICI",
+      "upstoxInstrumentKey": "NSE_EQ|INE0J1Y01017",
+      "isTradable": true
+    },
+    {
+      "rank": 12,
+      "isin": "INE585B01010",
+      "companyName": "Maruti Suzuki India  Ltd.",
+      "sourceSymbol": "MARUTI",
+      "canonicalNseSymbol": "MARUTI",
+      "upstoxInstrumentKey": "NSE_EQ|INE585B01010",
+      "isTradable": true
+    },
+    {
+      "rank": 13,
+      "isin": "INE044A01036",
+      "companyName": "Sun Pharmaceutical Industries Ltd.",
+      "sourceSymbol": "SUNPHARMA",
+      "canonicalNseSymbol": "SUNPHARMA",
+      "upstoxInstrumentKey": "NSE_EQ|INE044A01036",
+      "isTradable": true
+    },
+    {
+      "rank": 14,
+      "isin": "INE101A01026",
+      "companyName": "Mahindra & Mahindra Ltd.",
+      "sourceSymbol": "M&M",
+      "canonicalNseSymbol": "M&M",
+      "upstoxInstrumentKey": "NSE_EQ|INE101A01026",
+      "isTradable": true
+    },
+    {
+      "rank": 15,
+      "isin": "INE238A01034",
+      "companyName": "AXIS Bank Ltd.",
+      "sourceSymbol": "AXISBANK",
+      "canonicalNseSymbol": "AXISBANK",
+      "upstoxInstrumentKey": "NSE_EQ|INE238A01034",
+      "isTradable": true
+    },
+    {
+      "rank": 16,
+      "isin": "INE237A01036",
+      "companyName": "Kotak Mahindra Bank Ltd.",
+      "sourceSymbol": "KOTAKBANK",
+      "canonicalNseSymbol": "KOTAKBANK",
+      "upstoxInstrumentKey": "NSE_EQ|INE237A01036",
+      "isTradable": true
+    },
+    {
+      "rank": 17,
+      "isin": "INE154A01025",
+      "companyName": "ITC Ltd",
+      "sourceSymbol": "ITC",
+      "canonicalNseSymbol": "ITC",
+      "upstoxInstrumentKey": "NSE_EQ|INE154A01025",
+      "isTradable": true
+    },
+    {
+      "rank": 18,
+      "isin": "INE280A01028",
+      "companyName": "Titan Company Limited",
+      "sourceSymbol": "TITAN",
+      "canonicalNseSymbol": "TITAN",
+      "upstoxInstrumentKey": "NSE_EQ|INE280A01028",
+      "isTradable": true
+    },
+    {
+      "rank": 19,
+      "isin": "INE860A01027",
+      "companyName": "HCL Technologies Ltd",
+      "sourceSymbol": "HCLTECH",
+      "canonicalNseSymbol": "HCLTECH",
+      "upstoxInstrumentKey": "NSE_EQ|INE860A01027",
+      "isTradable": true
+    },
+    {
+      "rank": 20,
+      "isin": "INE733E01010",
+      "companyName": "NTPC Limited",
+      "sourceSymbol": "NTPC",
+      "canonicalNseSymbol": "NTPC",
+      "upstoxInstrumentKey": "NSE_EQ|INE733E01010",
+      "isTradable": true
+    },
+    {
+      "rank": 21,
+      "isin": "INE742F01042",
+      "companyName": "Adani Ports and Special Economic Zone Ltd",
+      "sourceSymbol": "ADANIPORTS",
+      "canonicalNseSymbol": "ADANIPORTS",
+      "upstoxInstrumentKey": "NSE_EQ|INE742F01042",
+      "isTradable": true
+    },
+    {
+      "rank": 22,
+      "isin": "INE481G01011",
+      "companyName": "UltraTech Cement Ltd",
+      "sourceSymbol": "ULTRACEMCO",
+      "canonicalNseSymbol": "ULTRACEMCO",
+      "upstoxInstrumentKey": "NSE_EQ|INE481G01011",
+      "isTradable": true
+    },
+    {
+      "rank": 23,
+      "isin": "INE814H01029",
+      "companyName": "Adani Power Limited",
+      "sourceSymbol": "ADANIPOWER",
+      "canonicalNseSymbol": "ADANIPOWER",
+      "upstoxInstrumentKey": "NSE_EQ|INE814H01029",
+      "isTradable": true
+    },
+    {
+      "rank": 24,
+      "isin": "INE213A01029",
+      "companyName": "Oil And Natural Gas Corporation Ltd",
+      "sourceSymbol": "ONGC",
+      "canonicalNseSymbol": "ONGC",
+      "upstoxInstrumentKey": "NSE_EQ|INE213A01029",
+      "isTradable": true
+    },
+    {
+      "rank": 25,
+      "isin": "INE263A01024",
+      "companyName": "Bharat Electronics Ltd.",
+      "sourceSymbol": "BEL",
+      "canonicalNseSymbol": "BEL",
+      "upstoxInstrumentKey": "NSE_EQ|INE263A01024",
+      "isTradable": true
+    },
+    {
+      "rank": 26,
+      "isin": "INE019A01038",
+      "companyName": "JSW Steel Limited",
+      "sourceSymbol": "JSWSTEEL",
+      "canonicalNseSymbol": "JSWSTEEL",
+      "upstoxInstrumentKey": "NSE_EQ|INE019A01038",
+      "isTradable": true
+    },
+    {
+      "rank": 27,
+      "isin": "INE918I01026",
+      "companyName": "Bajaj Finserv Limited",
+      "sourceSymbol": "BAJAJFINSV",
+      "canonicalNseSymbol": "BAJAJFINSV",
+      "upstoxInstrumentKey": "NSE_EQ|INE918I01026",
+      "isTradable": true
+    },
+    {
+      "rank": 28,
+      "isin": "INE423A01024",
+      "companyName": "Adani Enterprises Ltd.",
+      "sourceSymbol": "ADANIENT",
+      "canonicalNseSymbol": "ADANIENT",
+      "upstoxInstrumentKey": "NSE_EQ|INE423A01024",
+      "isTradable": true
+    },
+    {
+      "rank": 29,
+      "isin": "INE066F01020",
+      "companyName": "Hindustan Aeronautics Limited",
+      "sourceSymbol": "HAL",
+      "canonicalNseSymbol": "HAL",
+      "upstoxInstrumentKey": "NSE_EQ|INE066F01020",
+      "isTradable": true
+    },
+    {
+      "rank": 30,
+      "isin": "INE522F01014",
+      "companyName": "Coal India Limited",
+      "sourceSymbol": "COALINDIA",
+      "canonicalNseSymbol": "COALINDIA",
+      "upstoxInstrumentKey": "NSE_EQ|INE522F01014",
+      "isTradable": true
+    },
+    {
+      "rank": 31,
+      "isin": "INE917I01010",
+      "companyName": "Bajaj Auto Limited",
+      "sourceSymbol": "BAJAJ-AUTO",
+      "canonicalNseSymbol": "BAJAJ-AUTO",
+      "upstoxInstrumentKey": "NSE_EQ|INE917I01010",
+      "isTradable": true
+    },
+    {
+      "rank": 32,
+      "isin": "INE752E01010",
+      "companyName": "POWER GRID CORPORATION OF INDIA LIMITED",
+      "sourceSymbol": "POWERGRID",
+      "canonicalNseSymbol": "POWERGRID",
+      "upstoxInstrumentKey": "NSE_EQ|INE752E01010",
+      "isTradable": true
+    },
+    {
+      "rank": 33,
+      "isin": "INE192R01011",
+      "companyName": "Avenue Supermarts Limited",
+      "sourceSymbol": "DMART",
+      "canonicalNseSymbol": "DMART",
+      "upstoxInstrumentKey": "NSE_EQ|INE192R01011",
+      "isTradable": true
+    },
+    {
+      "rank": 34,
+      "isin": "INE239A01024",
+      "companyName": "Nestle India Ltd.",
+      "sourceSymbol": "NESTLEIND",
+      "canonicalNseSymbol": "NESTLEIND",
+      "upstoxInstrumentKey": "NSE_EQ|INE239A01024",
+      "isTradable": true
+    },
+    {
+      "rank": 35,
+      "isin": "INE267A01025",
+      "companyName": "Hindustan Zinc Ltd.",
+      "sourceSymbol": "HINDZINC",
+      "canonicalNseSymbol": "HINDZINC",
+      "upstoxInstrumentKey": "NSE_EQ|INE267A01025",
+      "isTradable": true
+    },
+    {
+      "rank": 36,
+      "isin": "INE081A01020",
+      "companyName": "TATA STEEL LIMITED",
+      "sourceSymbol": "TATASTEEL",
+      "canonicalNseSymbol": "TATASTEEL",
+      "upstoxInstrumentKey": "NSE_EQ|INE081A01020",
+      "isTradable": true
+    },
+    {
+      "rank": 37,
+      "isin": "INE758T01015",
+      "companyName": "Eternal Limited",
+      "sourceSymbol": "ETERNAL",
+      "canonicalNseSymbol": "ETERNAL",
+      "upstoxInstrumentKey": "NSE_EQ|INE758T01015",
+      "isTradable": true
+    },
+    {
+      "rank": 38,
+      "isin": "INE021A01026",
+      "companyName": "Asian Paints Ltd.",
+      "sourceSymbol": "ASIANPAINT",
+      "canonicalNseSymbol": "ASIANPAINT",
+      "upstoxInstrumentKey": "NSE_EQ|INE021A01026",
+      "isTradable": true
+    },
+    {
+      "rank": 39,
+      "isin": "INE038A01020",
+      "companyName": "Hindalco Industries Ltd.",
+      "sourceSymbol": "HINDALCO",
+      "canonicalNseSymbol": "HINDALCO",
+      "upstoxInstrumentKey": "NSE_EQ|INE038A01020",
+      "isTradable": true
+    },
+    {
+      "rank": 40,
+      "isin": "INE075A01022",
+      "companyName": "Wipro  Ltd.",
+      "sourceSymbol": "WIPRO",
+      "canonicalNseSymbol": "WIPRO",
+      "upstoxInstrumentKey": "NSE_EQ|INE075A01022",
+      "isTradable": true
+    },
+    {
+      "rank": 41,
+      "isin": "INE242A01010",
+      "companyName": "Indian Oil Corporation Ltd.",
+      "sourceSymbol": "IOC",
+      "canonicalNseSymbol": "IOC",
+      "upstoxInstrumentKey": "NSE_EQ|INE242A01010",
+      "isTradable": true
+    },
+    {
+      "rank": 42,
+      "isin": "INE721A01047",
+      "companyName": "Shriram Finance Limited",
+      "sourceSymbol": "SHRIRAMFIN",
+      "canonicalNseSymbol": "SHRIRAMFIN",
+      "upstoxInstrumentKey": "NSE_EQ|INE721A01047",
+      "isTradable": true
+    },
+    {
+      "rank": 43,
+      "isin": "INE066A01021",
+      "companyName": "Eicher Motors Ltd.",
+      "sourceSymbol": "EICHERMOT",
+      "canonicalNseSymbol": "EICHERMOT",
+      "upstoxInstrumentKey": "NSE_EQ|INE066A01021",
+      "isTradable": true
+    },
+    {
+      "rank": 44,
+      "isin": "INE047A01021",
+      "companyName": "Grasim Industries Ltd",
+      "sourceSymbol": "GRASIM",
+      "canonicalNseSymbol": "GRASIM",
+      "upstoxInstrumentKey": "NSE_EQ|INE047A01021",
+      "isTradable": true
+    },
+    {
+      "rank": 45,
+      "isin": "INE123W01016",
+      "companyName": "SBI Life Insurance Company Limited",
+      "sourceSymbol": "SBILIFE",
+      "canonicalNseSymbol": "SBILIFE",
+      "upstoxInstrumentKey": "NSE_EQ|INE123W01016",
+      "isTradable": true
+    },
+    {
+      "rank": 46,
+      "isin": "INE364U01010",
+      "companyName": "Adani Green Energy Limited",
+      "sourceSymbol": "ADANIGREEN",
+      "canonicalNseSymbol": "ADANIGREEN",
+      "upstoxInstrumentKey": "NSE_EQ|INE364U01010",
+      "isTradable": true
+    },
+    {
+      "rank": 47,
+      "isin": "INE1CDF01017",
+      "companyName": "Vedanta Aluminium Metal Limited",
+      "sourceSymbol": "VAML",
+      "canonicalNseSymbol": "VAML",
+      "upstoxInstrumentKey": "NSE_EQ|INE1CDF01017",
+      "isTradable": true
+    },
+    {
+      "rank": 48,
+      "isin": "INE646L01027",
+      "companyName": "InterGlobe Aviation Limited",
+      "sourceSymbol": "INDIGO",
+      "canonicalNseSymbol": "INDIGO",
+      "upstoxInstrumentKey": "NSE_EQ|INE646L01027",
+      "isTradable": true
+    },
+    {
+      "rank": 49,
+      "isin": "INE494B01023",
+      "companyName": "TVS Motor Company Ltd.",
+      "sourceSymbol": "TVSMOTOR",
+      "canonicalNseSymbol": "TVSMOTOR",
+      "upstoxInstrumentKey": "NSE_EQ|INE494B01023",
+      "isTradable": true
+    },
+    {
+      "rank": 50,
+      "isin": "INE361B01024",
+      "companyName": "Divi's Laboratories Ltd.",
+      "sourceSymbol": "DIVISLAB",
+      "canonicalNseSymbol": "DIVISLAB",
+      "upstoxInstrumentKey": "NSE_EQ|INE361B01024",
+      "isTradable": true
+    },
+    {
+      "rank": 51,
+      "isin": "INE0V6F01027",
+      "companyName": "HYUNDAI MOTOR INDIA LIMITED",
+      "sourceSymbol": "HYUNDAI",
+      "canonicalNseSymbol": "HYUNDAI",
+      "upstoxInstrumentKey": "NSE_EQ|INE0V6F01027",
+      "isTradable": true
+    },
+    {
+      "rank": 52,
+      "isin": "INE200M01039",
+      "companyName": "Varun Beverages Limited",
+      "sourceSymbol": "VBL",
+      "canonicalNseSymbol": "VBL",
+      "upstoxInstrumentKey": "NSE_EQ|INE200M01039",
+      "isTradable": true
+    },
+    {
+      "rank": 53,
+      "isin": "INE758E01017",
+      "companyName": "Jio Financial Services Limited",
+      "sourceSymbol": "JIOFIN",
+      "canonicalNseSymbol": "JIOFIN",
+      "upstoxInstrumentKey": "NSE_EQ|INE758E01017",
+      "isTradable": true
+    },
+    {
+      "rank": 54,
+      "isin": "INE1TAE01010",
+      "companyName": "Tata Motors Limited",
+      "sourceSymbol": "TMCV",
+      "canonicalNseSymbol": "TMCV",
+      "upstoxInstrumentKey": "NSE_EQ|INE1TAE01010",
+      "isTradable": true
+    },
+    {
+      "rank": 55,
+      "isin": "INE346A01027",
+      "companyName": "ICICI Prudential Asset Management Company Limited",
+      "sourceSymbol": "ICICIAMC",
+      "canonicalNseSymbol": "ICICIAMC",
+      "upstoxInstrumentKey": "NSE_EQ|INE346A01027",
+      "isTradable": true
+    },
+    {
+      "rank": 56,
+      "isin": "INE271C01023",
+      "companyName": "DLF LIMITED",
+      "sourceSymbol": "DLF",
+      "canonicalNseSymbol": "DLF",
+      "upstoxInstrumentKey": "NSE_EQ|INE271C01023",
+      "isTradable": true
+    },
+    {
+      "rank": 57,
+      "isin": "INE318A01026",
+      "companyName": "Pidilite Industries Ltd.",
+      "sourceSymbol": "PIDILITIND",
+      "canonicalNseSymbol": "PIDILITIND",
+      "upstoxInstrumentKey": "NSE_EQ|INE318A01026",
+      "isTradable": true
+    },
+    {
+      "rank": 58,
+      "isin": "INE028A01039",
+      "companyName": "Bank Of Baroda",
+      "sourceSymbol": "BANKBARODA",
+      "canonicalNseSymbol": "BANKBARODA",
+      "upstoxInstrumentKey": "NSE_EQ|INE028A01039",
+      "isTradable": true
+    },
+    {
+      "rank": 59,
+      "isin": "INE669C01036",
+      "companyName": "Tech Mahindra Limited",
+      "sourceSymbol": "TECHM",
+      "canonicalNseSymbol": "TECHM",
+      "upstoxInstrumentKey": "NSE_EQ|INE669C01036",
+      "isTradable": true
+    },
+    {
+      "rank": 60,
+      "isin": "INE849A01020",
+      "companyName": "Trent Ltd [Lakme Ltd]",
+      "sourceSymbol": "TRENT",
+      "canonicalNseSymbol": "TRENT",
+      "upstoxInstrumentKey": "NSE_EQ|INE849A01020",
+      "isTradable": true
+    },
+    {
+      "rank": 61,
+      "isin": "INE685A01028",
+      "companyName": "Torrent Pharmaceuticals Ltd.",
+      "sourceSymbol": "TORNTPHARM",
+      "canonicalNseSymbol": "TORNTPHARM",
+      "upstoxInstrumentKey": "NSE_EQ|INE685A01028",
+      "isTradable": true
+    },
+    {
+      "rank": 62,
+      "isin": "INE029A01011",
+      "companyName": "Bharat Petroleum Corpn. Ltd.",
+      "sourceSymbol": "BPCL",
+      "canonicalNseSymbol": "BPCL",
+      "upstoxInstrumentKey": "NSE_EQ|INE029A01011",
+      "isTradable": true
+    },
+    {
+      "rank": 63,
+      "isin": "INE931S01010",
+      "companyName": "Adani Energy Solutions Limited",
+      "sourceSymbol": "ADANIENSOL",
+      "canonicalNseSymbol": "ADANIENSOL",
+      "upstoxInstrumentKey": "NSE_EQ|INE931S01010",
+      "isTradable": true
+    },
+    {
+      "rank": 64,
+      "isin": "INE976I01016",
+      "companyName": "Tata Capital Limited",
+      "sourceSymbol": "TATACAP",
+      "canonicalNseSymbol": "TATACAP",
+      "upstoxInstrumentKey": "NSE_EQ|INE976I01016",
+      "isTradable": true
+    },
+    {
+      "rank": 65,
+      "isin": "INE795G01014",
+      "companyName": "HDFC LIFE INSURANCE COMPANY LIMITED",
+      "sourceSymbol": "HDFCLIFE",
+      "canonicalNseSymbol": "HDFCLIFE",
+      "upstoxInstrumentKey": "NSE_EQ|INE795G01014",
+      "isTradable": true
+    },
+    {
+      "rank": 66,
+      "isin": "INE214T01019",
+      "companyName": "LTM LIMITED",
+      "sourceSymbol": "LTM",
+      "canonicalNseSymbol": "LTM",
+      "upstoxInstrumentKey": "NSE_EQ|INE214T01019",
+      "isTradable": true
+    },
+    {
+      "rank": 67,
+      "isin": "INE414G01012",
+      "companyName": "MUTHOOT FINANCE LIMITED",
+      "sourceSymbol": "MUTHOOTFIN",
+      "canonicalNseSymbol": "MUTHOOTFIN",
+      "upstoxInstrumentKey": "NSE_EQ|INE414G01012",
+      "isTradable": true
+    },
+    {
+      "rank": 68,
+      "isin": "INE134E01011",
+      "companyName": "Power Finance Corporation Ltd",
+      "sourceSymbol": "PFC",
+      "canonicalNseSymbol": "PFC",
+      "upstoxInstrumentKey": "NSE_EQ|INE134E01011",
+      "isTradable": true
+    },
+    {
+      "rank": 69,
+      "isin": "INE053F01010",
+      "companyName": "Indian Railway Finance Corporation",
+      "sourceSymbol": "IRFC",
+      "canonicalNseSymbol": "IRFC",
+      "upstoxInstrumentKey": "NSE_EQ|INE053F01010",
+      "isTradable": true
+    },
+    {
+      "rank": 70,
+      "isin": "INE121A01024",
+      "companyName": "Cholamandalam Investment and Finance Company Ltd",
+      "sourceSymbol": "CHOLAFIN",
+      "canonicalNseSymbol": "CHOLAFIN",
+      "upstoxInstrumentKey": "NSE_EQ|INE121A01024",
+      "isTradable": true
+    },
+    {
+      "rank": 71,
+      "isin": "INE216A01030",
+      "companyName": "Britannia Industries Ltd.",
+      "sourceSymbol": "BRITANNIA",
+      "canonicalNseSymbol": "BRITANNIA",
+      "upstoxInstrumentKey": "NSE_EQ|INE216A01030",
+      "isTradable": true
+    },
+    {
+      "rank": 72,
+      "isin": "INE298A01020",
+      "companyName": "Cummins India Ltd.",
+      "sourceSymbol": "CUMMINSIND",
+      "canonicalNseSymbol": "CUMMINSIND",
+      "upstoxInstrumentKey": "NSE_EQ|INE298A01020",
+      "isTradable": true
+    },
+    {
+      "rank": 73,
+      "isin": "INE343H01029",
+      "companyName": "Solar Industries India Limited",
+      "sourceSymbol": "SOLARINDS",
+      "canonicalNseSymbol": "SOLARINDS",
+      "upstoxInstrumentKey": "NSE_EQ|INE343H01029",
+      "isTradable": true
+    },
+    {
+      "rank": 74,
+      "isin": "INE118H01025",
+      "companyName": "BSE Ltd.",
+      "sourceSymbol": "BSE",
+      "canonicalNseSymbol": "BSE",
+      "upstoxInstrumentKey": "NSE_EQ|INE118H01025",
+      "isTradable": true
+    },
+    {
+      "rank": 75,
+      "isin": "INE692A01016",
+      "companyName": "Union Bank of India",
+      "sourceSymbol": "UNIONBANK",
+      "canonicalNseSymbol": "UNIONBANK",
+      "upstoxInstrumentKey": "NSE_EQ|INE692A01016",
+      "isTradable": true
+    },
+    {
+      "rank": 76,
+      "isin": "INE117A01022",
+      "companyName": "ABB India Limited",
+      "sourceSymbol": "ABB",
+      "canonicalNseSymbol": "ABB",
+      "upstoxInstrumentKey": "NSE_EQ|INE117A01022",
+      "isTradable": true
+    },
+    {
+      "rank": 77,
+      "isin": "INE775A01035",
+      "companyName": "Samvardhana Motherson International Limited",
+      "sourceSymbol": "MOTHERSON",
+      "canonicalNseSymbol": "MOTHERSON",
+      "upstoxInstrumentKey": "NSE_EQ|INE775A01035",
+      "isTradable": true
+    },
+    {
+      "rank": 78,
+      "isin": "INE160A01022",
+      "companyName": "Punjab National Bank",
+      "sourceSymbol": "PNB",
+      "canonicalNseSymbol": "PNB",
+      "upstoxInstrumentKey": "NSE_EQ|INE160A01022",
+      "isTradable": true
+    },
+    {
+      "rank": 79,
+      "isin": "INE155A01022",
+      "companyName": "TATA MOTORS PASSENGER VEHICLES LIMITED",
+      "sourceSymbol": "TMPV",
+      "canonicalNseSymbol": "TMPV",
+      "upstoxInstrumentKey": "NSE_EQ|INE155A01022",
+      "isTradable": true
+    },
+    {
+      "rank": 80,
+      "isin": "INE476A01022",
+      "companyName": "Canara Bank",
+      "sourceSymbol": "CANBK",
+      "canonicalNseSymbol": "CANBK",
+      "upstoxInstrumentKey": "NSE_EQ|INE476A01022",
+      "isTradable": true
+    },
+    {
+      "rank": 81,
+      "isin": "INE245A01021",
+      "companyName": "Tata Power Co. Ltd",
+      "sourceSymbol": "TATAPOWER",
+      "canonicalNseSymbol": "TATAPOWER",
+      "upstoxInstrumentKey": "NSE_EQ|INE245A01021",
+      "isTradable": true
+    },
+    {
+      "rank": 82,
+      "isin": "INE455K01017",
+      "companyName": "Polycab India Limited",
+      "sourceSymbol": "POLYCAB",
+      "canonicalNseSymbol": "POLYCAB",
+      "upstoxInstrumentKey": "NSE_EQ|INE455K01017",
+      "isTradable": true
+    },
+    {
+      "rank": 83,
+      "isin": "INE669E01016",
+      "companyName": "VODAFONE IDEA LIMITED",
+      "sourceSymbol": "IDEA",
+      "canonicalNseSymbol": "IDEA",
+      "upstoxInstrumentKey": "NSE_EQ|INE669E01016",
+      "isTradable": true
+    },
+    {
+      "rank": 84,
+      "isin": "INE205A01025",
+      "companyName": "Vedanta Ltd.",
+      "sourceSymbol": "VEDL",
+      "canonicalNseSymbol": "VEDL",
+      "upstoxInstrumentKey": "NSE_EQ|INE205A01025",
+      "isTradable": true
+    },
+    {
+      "rank": 85,
+      "isin": "INE07Y701011",
+      "companyName": "HITACHI ENERGY INDIA LIMITED",
+      "sourceSymbol": "POWERINDIA",
+      "canonicalNseSymbol": "POWERINDIA",
+      "upstoxInstrumentKey": "NSE_EQ|INE07Y701011",
+      "isTradable": true
+    },
+    {
+      "rank": 86,
+      "isin": "INE003A01024",
+      "companyName": "Siemens Ltd.",
+      "sourceSymbol": "SIEMENS",
+      "canonicalNseSymbol": "SIEMENS",
+      "upstoxInstrumentKey": "NSE_EQ|INE003A01024",
+      "isTradable": true
+    },
+    {
+      "rank": 87,
+      "isin": "INE749A01030",
+      "companyName": "JINDAL STEEL LIMITED",
+      "sourceSymbol": "JINDALSTEL",
+      "canonicalNseSymbol": "JINDALSTEL",
+      "upstoxInstrumentKey": "NSE_EQ|INE749A01030",
+      "isTradable": true
+    },
+    {
+      "rank": 88,
+      "isin": "INE067A01029",
+      "companyName": "CG Power and Industrial Solutions Limited",
+      "sourceSymbol": "CGPOWER",
+      "canonicalNseSymbol": "CGPOWER",
+      "upstoxInstrumentKey": "NSE_EQ|INE067A01029",
+      "isTradable": true
+    },
+    {
+      "rank": 89,
+      "isin": "INE562A01011",
+      "companyName": "Indian Bank",
+      "sourceSymbol": "INDIANB",
+      "canonicalNseSymbol": "INDIANB",
+      "upstoxInstrumentKey": "NSE_EQ|INE562A01011",
+      "isTradable": true
+    },
+    {
+      "rank": 90,
+      "isin": "INE079A01024",
+      "companyName": "Ambuja Cements Ltd.",
+      "sourceSymbol": "AMBUJACEM",
+      "canonicalNseSymbol": "AMBUJACEM",
+      "upstoxInstrumentKey": "NSE_EQ|INE079A01024",
+      "isTradable": true
+    },
+    {
+      "rank": 91,
+      "isin": "INE118A01012",
+      "companyName": "Bajaj Holdings & Investment Limited",
+      "sourceSymbol": "BAJAJHLDNG",
+      "canonicalNseSymbol": "BAJAJHLDNG",
+      "upstoxInstrumentKey": "NSE_EQ|INE118A01012",
+      "isTradable": true
+    },
+    {
+      "rank": 92,
+      "isin": "INE121J01017",
+      "companyName": "INDUS TOWERS LIMITED",
+      "sourceSymbol": "INDUSTOWER",
+      "canonicalNseSymbol": "INDUSTOWER",
+      "upstoxInstrumentKey": "NSE_EQ|INE121J01017",
+      "isTradable": true
+    },
+    {
+      "rank": 93,
+      "isin": "INE102D01028",
+      "companyName": "Godrej Consumer Products Ltd.",
+      "sourceSymbol": "GODREJCP",
+      "canonicalNseSymbol": "GODREJCP",
+      "upstoxInstrumentKey": "NSE_EQ|INE102D01028",
+      "isTradable": true
+    },
+    {
+      "rank": 94,
+      "isin": "INE192A01025",
+      "companyName": "TATA CONSUMER PRODUCTS LIMITED",
+      "sourceSymbol": "TATACONSUM",
+      "canonicalNseSymbol": "TATACONSUM",
+      "upstoxInstrumentKey": "NSE_EQ|INE192A01025",
+      "isTradable": true
+    },
+    {
+      "rank": 95,
+      "isin": "INE0HOQ01053",
+      "companyName": "Billionbrains Garage Ventures Limited",
+      "sourceSymbol": "GROWW",
+      "canonicalNseSymbol": "GROWW",
+      "upstoxInstrumentKey": "NSE_EQ|INE0HOQ01053",
+      "isTradable": true
+    },
+    {
+      "rank": 96,
+      "isin": "INE127D01025",
+      "companyName": "HDFC Asset Management Company Limited",
+      "sourceSymbol": "HDFCAMC",
+      "canonicalNseSymbol": "HDFCAMC",
+      "upstoxInstrumentKey": "NSE_EQ|INE127D01025",
+      "isTradable": true
+    },
+    {
+      "rank": 97,
+      "isin": "INE437A01024",
+      "companyName": "Apollo Hospitals Enterprises Ltd.",
+      "sourceSymbol": "APOLLOHOSP",
+      "canonicalNseSymbol": "APOLLOHOSP",
+      "upstoxInstrumentKey": "NSE_EQ|INE437A01024",
+      "isTradable": true
+    },
+    {
+      "rank": 98,
+      "isin": "INE257A01026",
+      "companyName": "Bharat Heavy Electricals Ltd.",
+      "sourceSymbol": "BHEL",
+      "canonicalNseSymbol": "BHEL",
+      "upstoxInstrumentKey": "NSE_EQ|INE257A01026",
+      "isTradable": true
+    },
+    {
+      "rank": 99,
+      "isin": "INE059A01026",
+      "companyName": "Cipla Ltd.",
+      "sourceSymbol": "CIPLA",
+      "canonicalNseSymbol": "CIPLA",
+      "upstoxInstrumentKey": "NSE_EQ|INE059A01026",
+      "isTradable": true
+    },
+    {
+      "rank": 100,
+      "isin": "INE129A01019",
+      "companyName": "Gail (India) Ltd.",
+      "sourceSymbol": "GAIL",
+      "canonicalNseSymbol": "GAIL",
+      "upstoxInstrumentKey": "NSE_EQ|INE129A01019",
+      "isTradable": true
+    }
+  ]
+}

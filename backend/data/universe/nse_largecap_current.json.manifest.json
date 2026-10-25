@@ -1,0 +1,7 @@
+{
+  "artifactFile": "nse_largecap_current.json",
+  "artifactSha256": "6480f8a5b1bce40f8386e9b7141e2f3c8ba2a6cd49c544d7aaa4f22a65b3e8ed",
+  "sourceFileSha256": "5a01d216bcae60cee5493b5f7558137f0ec06ccfba04d2b32e462ada522af3bf",
+  "datasetVersion": "AMFI-2026-H2-V1",
+  "generatedAt": "2026-10-25T09:49:05.445769+00:00"
+}
