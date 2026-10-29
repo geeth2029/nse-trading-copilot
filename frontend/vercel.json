@@ -10,7 +10,7 @@
     },
     {
       "source": "/health",
-      "destination": "https://YOUR_RENDER_BACKEND_URL/health"
+      "destination": "https://nse-trading-copilot.onrender.com/api/:path*"
     }
   ]
 }
