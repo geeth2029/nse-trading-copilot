@@ -56,6 +56,7 @@ class ConstituentScreenResult:
     is_qualified: bool
     diagnostic_status: str
     diagnostic_reason: str | None
+    quote_source: str | None = None
 
 
 def to_read_model(r: ConstituentScreenResult) -> ConstituentScreenResultRead:
@@ -126,19 +127,22 @@ class UniverseScreenerService:
         if quote_timestamp is None:
             return False
 
-        if source == "TEJHQ":
-            latest_trading_day = self._calendar.get_latest_completed_trading_day(now_utc)
-            trade_date_ist = quote_timestamp.astimezone(IST).date()
-            return trade_date_ist >= latest_trading_day and quote_timestamp <= now_utc + timedelta(seconds=5)
+        ts = quote_timestamp if quote_timestamp.tzinfo is not None else quote_timestamp.replace(tzinfo=timezone.utc)
+        now = now_utc if now_utc.tzinfo is not None else now_utc.replace(tzinfo=timezone.utc)
 
-        if is_nse_market_hours(now_utc):
+        if source == "TEJHQ":
+            latest_trading_day = self._calendar.get_latest_completed_trading_day(now)
+            trade_date_ist = ts.astimezone(IST).date()
+            return trade_date_ist >= latest_trading_day and ts <= now + timedelta(seconds=5)
+
+        if is_nse_market_hours(now):
             market_hours_limit = float(self._settings.upstox_quote_market_hours_ttl_seconds)
-            age_seconds = (now_utc - quote_timestamp).total_seconds()
+            age_seconds = (now - ts).total_seconds()
             return -5.0 <= age_seconds <= market_hours_limit
         else:
-            latest_trading_day = self._calendar.get_latest_completed_trading_day(now_utc)
-            trade_date_ist = quote_timestamp.astimezone(IST).date()
-            return trade_date_ist >= latest_trading_day and quote_timestamp <= now_utc + timedelta(seconds=5)
+            latest_trading_day = self._calendar.get_latest_completed_trading_day(now)
+            trade_date_ist = ts.astimezone(IST).date()
+            return trade_date_ist >= latest_trading_day and ts <= now + timedelta(seconds=5)
 
     async def screen_universe(
         self,
@@ -182,8 +186,10 @@ class UniverseScreenerService:
             # Re-evaluate quote freshness for every constituent before serving cached results
             refreshed_results: list[ConstituentScreenResult] = []
             for item in cached_results:
+                source = getattr(item, "quote_source", None) or self._get_provider_code()
                 is_stale_now = item.is_stale or (
-                    item.quote_timestamp is not None and not self._is_quote_fresh(item.quote_timestamp, now_utc)
+                    item.quote_timestamp is not None
+                    and not self._is_quote_fresh(item.quote_timestamp, now_utc, source=source)
                 )
                 if is_stale_now:
                     refreshed_results.append(
@@ -323,6 +329,7 @@ class UniverseScreenerService:
                 is_qualified=is_qualified,
                 diagnostic_status=diag_status,
                 diagnostic_reason=diag_reason,
+                quote_source=quote.source if quote else self._get_provider_code(),
             )
             results.append(result_item)
 

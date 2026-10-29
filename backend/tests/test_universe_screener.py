@@ -24,6 +24,7 @@ from app.services.market_data.base import (
     WeeklyCandle,
 )
 from app.services.market_data.cache import MarketDataCache
+from app.services.market_data.calendar import IST
 from app.services.market_data.errors import (
     MarketDataUnavailableError,
     ProviderAuthenticationError,
@@ -947,3 +948,323 @@ def test_no_database_records_created_during_screening(screener_app_and_client):
     pos_res = client.get("/api/v1/portfolio/positions")
     assert pos_res.status_code == 200
     assert len(pos_res.json()["positions"]) == 0
+
+
+# =========================================================================
+# Scenario 16: Screener cache freshness and provider source regression tests
+# =========================================================================
+@pytest.mark.anyio
+async def test_tejhq_eod_quote_freshness_during_market_hours_initial_and_cached(tmp_path):
+    """Regression test: A valid TejHQ EOD quote from the latest completed trading day
+    must not become stale during market hours on cache hits, even though it is older than 30 seconds.
+    Stocks with RSI > 60 must stay QUALIFIED; stocks with RSI <= 60 must stay NOT_QUALIFIED.
+    """
+    artifact_path = tmp_path / "universe.json"
+    universe = generate_synthetic_universe()
+    save_universe_artifact(universe, artifact_path)
+
+    # Thursday 2026-08-13 at 11:00 IST (05:30 UTC) - during NSE market hours
+    # Latest completed trading day is Wednesday 2026-08-12
+    clock_dt = [datetime(2026, 8, 13, 5, 30, tzinfo=timezone.utc)]
+
+    u_service = UniverseService(artifact_path=artifact_path, clock=lambda: clock_dt[0].date())
+    provider = MockScreenerProvider(clock=lambda: clock_dt[0])
+
+    # Wednesday session close at 15:30 IST
+    wed_close_dt = datetime(2026, 8, 12, 15, 30, tzinfo=IST)
+
+    # SYNTH1: RSI > 70 (trend="up"), quote from Wednesday EOD with source="TEJHQ"
+    provider.candles["SYNTH1"] = make_weekly_candles("SYNTH1", count=60, trend="up")
+    provider.quotes["SYNTH1"] = MarketQuote(
+        symbol="SYNTH1",
+        instrument_identifier="NSE_EQ|INESYNTH1",
+        last_price=Decimal("2500.00"),
+        timestamp=wed_close_dt,
+        source="TEJHQ",
+        is_stale=False,
+    )
+
+    # SYNTH2: RSI < 40 (trend="down"), quote from Wednesday EOD with source="TEJHQ"
+    provider.candles["SYNTH2"] = make_weekly_candles("SYNTH2", count=60, trend="down")
+    provider.quotes["SYNTH2"] = MarketQuote(
+        symbol="SYNTH2",
+        instrument_identifier="NSE_EQ|INESYNTH2",
+        last_price=Decimal("1200.00"),
+        timestamp=wed_close_dt,
+        source="TEJHQ",
+        is_stale=False,
+    )
+
+    orig_batch = provider.get_reference_quotes_batch
+
+    async def batch_tejhq(symbols: list[str]) -> dict[str, MarketQuote]:
+        quotes = await orig_batch(symbols)
+        return {
+            s: MarketQuote(
+                symbol=s,
+                instrument_identifier=f"NSE_EQ|INE{s}",
+                last_price=Decimal("2000.00"),
+                timestamp=wed_close_dt,
+                source="TEJHQ",
+                is_stale=False,
+            )
+            if s not in provider.quotes
+            else provider.quotes[s]
+            for s in symbols
+        }
+
+    provider.get_reference_quotes_batch = batch_tejhq
+
+    screener = UniverseScreenerService(
+        universe_service=u_service,
+        provider=provider,
+        clock=lambda: clock_dt[0],
+    )
+
+    # 1. Initial screen
+    res1 = await screener.screen_universe(as_of_date=date(2026, 8, 13))
+    assert res1.total_constituents == 100
+    r1 = next(r for r in res1.results if r.canonical_nse_symbol == "SYNTH1")
+    r2 = next(r for r in res1.results if r.canonical_nse_symbol == "SYNTH2")
+
+    assert r1.is_stale is False
+    assert r1.is_qualified is True
+    assert r1.diagnostic_status == "QUALIFIED"
+
+    assert r2.is_stale is False
+    assert r2.is_qualified is False
+    assert r2.diagnostic_status == "NOT_QUALIFIED"
+    assert "Weekly RSI" in (r2.diagnostic_reason or "")
+
+    # Verify provider was called once for batch quotes
+    assert provider.batch_quote_calls == 1
+
+    # 2. Cached screen: Advance clock by 60 seconds (still within market hours, quote is ~19.5 hours old)
+    clock_dt[0] = clock_dt[0] + timedelta(seconds=60)
+    res2 = await screener.screen_universe(as_of_date=date(2026, 8, 13))
+
+    # Verify batch quotes was NOT called again (cache hit)
+    assert provider.batch_quote_calls == 1
+
+    r1_cached = next(r for r in res2.results if r.canonical_nse_symbol == "SYNTH1")
+    r2_cached = next(r for r in res2.results if r.canonical_nse_symbol == "SYNTH2")
+
+    # MUST NOT be marked stale! Must preserve qualification
+    assert r1_cached.is_stale is False
+    assert r1_cached.is_qualified is True
+    assert r1_cached.diagnostic_status == "QUALIFIED"
+
+    # Stock with RSI <= 60 must stay NOT_QUALIFIED, NOT overwritten to STALE_QUOTE
+    assert r2_cached.is_stale is False
+    assert r2_cached.is_qualified is False
+    assert r2_cached.diagnostic_status == "NOT_QUALIFIED"
+    assert res2.qualified_count == res1.qualified_count
+
+
+@pytest.mark.anyio
+async def test_tejhq_eod_quote_from_older_or_invalid_session_rejected(tmp_path):
+    """TejHQ quote from an older session or expiring session date must be rejected
+    according to calendar rules in both initial evaluation and cached-result re-evaluation.
+    """
+    artifact_path = tmp_path / "universe.json"
+    universe = generate_synthetic_universe()
+    save_universe_artifact(universe, artifact_path)
+
+    # Thursday 2026-08-13 11:00 IST (05:30 UTC) - during market hours
+    # Latest completed trading day is Wednesday 2026-08-12
+    clock_dt = [datetime(2026, 8, 13, 5, 30, tzinfo=timezone.utc)]
+
+    u_service = UniverseService(artifact_path=artifact_path, clock=lambda: clock_dt[0].date())
+    provider = MockScreenerProvider(clock=lambda: clock_dt[0])
+
+    # Case A: Quote is from Tuesday 2026-08-11 (older than latest completed trading day 2026-08-12)
+    tue_close_dt = datetime(2026, 8, 11, 15, 30, tzinfo=IST)
+    provider.candles["SYNTH1"] = make_weekly_candles("SYNTH1", count=60, trend="up")
+    provider.quotes["SYNTH1"] = MarketQuote(
+        symbol="SYNTH1",
+        instrument_identifier="NSE_EQ|INESYNTH1",
+        last_price=Decimal("2500.00"),
+        timestamp=tue_close_dt,
+        source="TEJHQ",
+        is_stale=False,
+    )
+
+    screener = UniverseScreenerService(
+        universe_service=u_service,
+        provider=provider,
+        clock=lambda: clock_dt[0],
+    )
+
+    # Initial evaluation: Tuesday quote is stale
+    res1 = await screener.screen_universe(as_of_date=date(2026, 8, 13))
+    r1 = next(r for r in res1.results if r.canonical_nse_symbol == "SYNTH1")
+    assert r1.is_stale is True
+    assert r1.is_qualified is False
+    assert r1.diagnostic_status == "STALE_QUOTE"
+
+    # Cached-result re-evaluation: Remains stale
+    clock_dt[0] = clock_dt[0] + timedelta(seconds=30)
+    res2 = await screener.screen_universe(as_of_date=date(2026, 8, 13))
+    r1_c = next(r for r in res2.results if r.canonical_nse_symbol == "SYNTH1")
+    assert r1_c.is_stale is True
+    assert r1_c.is_qualified is False
+    assert r1_c.diagnostic_status == "STALE_QUOTE"
+
+    # Case B: Session expiry during cache lifetime
+    # Re-setup with Wednesday quote evaluated at 15:20 IST (session not yet closed)
+    clock_dt[0] = datetime(2026, 8, 13, 15, 20, tzinfo=IST).astimezone(timezone.utc)
+    wed_close_dt = datetime(2026, 8, 12, 15, 30, tzinfo=IST)
+    provider.quotes["SYNTH1"] = MarketQuote(
+        symbol="SYNTH1",
+        instrument_identifier="NSE_EQ|INESYNTH1",
+        last_price=Decimal("2500.00"),
+        timestamp=wed_close_dt,
+        source="TEJHQ",
+        is_stale=False,
+    )
+
+    screener_b = UniverseScreenerService(
+        universe_service=u_service,
+        provider=provider,
+        clock=lambda: clock_dt[0],
+    )
+
+    # At 15:20 IST, latest completed day is Aug 12 -> Wednesday quote is fresh
+    res_b1 = await screener_b.screen_universe(as_of_date=date(2026, 8, 13))
+    r1_b1 = next(r for r in res_b1.results if r.canonical_nse_symbol == "SYNTH1")
+    assert r1_b1.is_stale is False
+    assert r1_b1.is_qualified is True
+
+    # Advance clock to 15:35 IST (Thursday trading session has now completed)
+    # Latest completed trading day becomes Aug 13!
+    # Cache hit re-evaluation must detect that Wednesday quote has expired!
+    clock_dt[0] = datetime(2026, 8, 13, 15, 35, tzinfo=IST).astimezone(timezone.utc)
+    res_b2 = await screener_b.screen_universe(as_of_date=date(2026, 8, 13))
+    r1_b2 = next(r for r in res_b2.results if r.canonical_nse_symbol == "SYNTH1")
+    assert r1_b2.is_stale is True
+    assert r1_b2.is_qualified is False
+    assert r1_b2.diagnostic_status == "STALE_QUOTE"
+
+
+@pytest.mark.anyio
+async def test_upstox_live_quotes_enforce_market_hours_ttl_initial_and_cached(tmp_path):
+    """Upstox live quotes must strictly enforce the 30-second market-hours TTL
+    in both initial evaluation and cached-result re-evaluation.
+    """
+    artifact_path = tmp_path / "universe.json"
+    universe = generate_synthetic_universe()
+    save_universe_artifact(universe, artifact_path)
+
+    # Thursday 2026-08-13 11:00:00 IST (05:30:00 UTC)
+    t0 = datetime(2026, 8, 13, 5, 30, 0, tzinfo=timezone.utc)
+    clock_dt = [t0]
+
+    u_service = UniverseService(artifact_path=artifact_path, clock=lambda: clock_dt[0].date())
+    provider = MockScreenerProvider(clock=lambda: clock_dt[0])
+
+    provider.candles["SYNTH1"] = make_weekly_candles("SYNTH1", count=60, trend="up")
+    # Quote timestamp is t0 (0 seconds old)
+    provider.quotes["SYNTH1"] = MarketQuote(
+        symbol="SYNTH1",
+        instrument_identifier="NSE_EQ|INESYNTH1",
+        last_price=Decimal("1500.00"),
+        timestamp=t0,
+        source="UPSTOX",
+        is_stale=False,
+    )
+
+    screener = UniverseScreenerService(
+        universe_service=u_service,
+        provider=provider,
+        clock=lambda: clock_dt[0],
+    )
+
+    # 1. Initial screen at t0: fresh (< 30s) -> QUALIFIED
+    res1 = await screener.screen_universe(as_of_date=date(2026, 8, 13))
+    r1 = next(r for r in res1.results if r.canonical_nse_symbol == "SYNTH1")
+    assert r1.is_stale is False
+    assert r1.is_qualified is True
+    assert r1.diagnostic_status == "QUALIFIED"
+
+    # 2. Cache hit at t0 + 15s (15s elapsed, <= 30s TTL): remains QUALIFIED
+    clock_dt[0] = t0 + timedelta(seconds=15)
+    res2 = await screener.screen_universe(as_of_date=date(2026, 8, 13))
+    r1_c1 = next(r for r in res2.results if r.canonical_nse_symbol == "SYNTH1")
+    assert r1_c1.is_stale is False
+    assert r1_c1.is_qualified is True
+
+    # 3. Cache hit at t0 + 45s (45s elapsed, > 30s TTL): must expire and become STALE_QUOTE
+    clock_dt[0] = t0 + timedelta(seconds=45)
+    res3 = await screener.screen_universe(as_of_date=date(2026, 8, 13))
+    r1_c2 = next(r for r in res3.results if r.canonical_nse_symbol == "SYNTH1")
+    assert r1_c2.is_stale is True
+    assert r1_c2.is_qualified is False
+    assert r1_c2.diagnostic_status == "STALE_QUOTE"
+    assert "Market quote has expired and is stale" in (r1_c2.diagnostic_reason or "")
+
+
+@pytest.mark.anyio
+async def test_missing_timestamp_and_stale_flags_fail_safely(tmp_path):
+    """Missing quote or provider-flagged stale quote fails safely in both
+    initial evaluation and cached-result re-evaluation.
+    """
+    artifact_path = tmp_path / "universe.json"
+    universe = generate_synthetic_universe()
+    save_universe_artifact(universe, artifact_path)
+
+    clock_dt = [datetime(2026, 8, 13, 5, 30, tzinfo=timezone.utc)]
+    u_service = UniverseService(artifact_path=artifact_path, clock=lambda: clock_dt[0].date())
+    provider = MockScreenerProvider(clock=lambda: clock_dt[0])
+
+    provider.candles["SYNTH1"] = make_weekly_candles("SYNTH1", count=60, trend="up")
+    provider.candles["SYNTH2"] = make_weekly_candles("SYNTH2", count=60, trend="up")
+
+    # SYNTH1: provider explicitly flags is_stale=True
+    provider.quotes["SYNTH1"] = MarketQuote(
+        symbol="SYNTH1",
+        instrument_identifier="NSE_EQ|INESYNTH1",
+        last_price=Decimal("1500.00"),
+        timestamp=clock_dt[0],
+        source="UPSTOX",
+        is_stale=True,
+    )
+
+    orig_batch = provider.get_reference_quotes_batch
+
+    async def batch_with_missing(symbols: list[str]) -> dict[str, MarketQuote]:
+        res = await orig_batch(symbols)
+        res.pop("SYNTH2", None)
+        return res
+
+    provider.get_reference_quotes_batch = batch_with_missing
+
+    screener = UniverseScreenerService(
+        universe_service=u_service,
+        provider=provider,
+        clock=lambda: clock_dt[0],
+    )
+
+    # Initial evaluation
+    res1 = await screener.screen_universe(as_of_date=date(2026, 8, 13))
+    r1 = next(r for r in res1.results if r.canonical_nse_symbol == "SYNTH1")
+    r2 = next(r for r in res1.results if r.canonical_nse_symbol == "SYNTH2")
+
+    assert r1.is_stale is True
+    assert r1.is_qualified is False
+    assert r1.diagnostic_status == "STALE_QUOTE"
+
+    assert r2.is_qualified is False
+    assert r2.diagnostic_status == "QUOTE_UNAVAILABLE"
+
+    # Cached-result re-evaluation: stays failed safely
+    clock_dt[0] = clock_dt[0] + timedelta(seconds=10)
+    res2 = await screener.screen_universe(as_of_date=date(2026, 8, 13))
+    r1_c = next(r for r in res2.results if r.canonical_nse_symbol == "SYNTH1")
+    r2_c = next(r for r in res2.results if r.canonical_nse_symbol == "SYNTH2")
+
+    assert r1_c.is_stale is True
+    assert r1_c.is_qualified is False
+    assert r1_c.diagnostic_status == "STALE_QUOTE"
+
+    assert r2_c.is_qualified is False
+    assert r2_c.diagnostic_status == "QUOTE_UNAVAILABLE"
