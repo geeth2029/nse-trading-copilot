@@ -2,15 +2,15 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://YOUR_RENDER_BACKEND_URL/api/:path*"
+      "destination": "https://nse-trading-copilot.onrender.com/api/:path*"
     },
     {
       "source": "/auth/:path*",
-      "destination": "https://YOUR_RENDER_BACKEND_URL/auth/:path*"
+      "destination": "https://nse-trading-copilot.onrender.com/auth/:path*"
     },
     {
       "source": "/health",
-      "destination": "https://nse-trading-copilot.onrender.com/api/:path*"
+      "destination": "https://nse-trading-copilot.onrender.com/health"
     }
   ]
 }
