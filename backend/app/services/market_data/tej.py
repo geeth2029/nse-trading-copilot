@@ -452,6 +452,14 @@ class TejMarketDataProvider(MarketDataProvider):
 
         await self.sync_partitions_if_needed(now_utc)
 
+        required_years = self._get_required_years(now_utc)
+        missing_years = [y for y in required_years if not self.get_partition_path(y).exists()]
+        if missing_years:
+            missing_str = ", ".join(str(y) for y in sorted(missing_years))
+            raise MarketDataUnavailableError(
+                f"TejHQ market data partitions are missing for required year(s): {missing_str}. Synchronization required."
+            )
+
         data_map = self._load_daily_records_for_symbols(norm_symbols, now_utc)
         latest_completed_session = self._calendar.get_latest_completed_trading_day(now_utc)
 

@@ -571,7 +571,10 @@ def test_screener_integration_with_tej_provider(tmp_path):
             "isin": "INE222A01022",
         })
 
-    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", records)
+    records_2025 = [r for r in records if r["date"].startswith("2025")]
+    records_2026 = [r for r in records if r["date"].startswith("2026")]
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", records_2025)
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", records_2026)
 
     last_d = date.fromisoformat(records[-1]["date"])
     as_of = datetime.combine(last_d, time(18, 0), tzinfo=IST).astimezone(timezone.utc)
@@ -699,6 +702,7 @@ def test_batch_quote_scan_matches_individual_quotes(tmp_path):
             "isin": "INE467B01029",
         },
     ]
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", [])
     create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", records)
 
     as_of = datetime.combine(friday_date, time(18, 0), tzinfo=IST).astimezone(timezone.utc)
@@ -764,3 +768,202 @@ def test_upstox_backward_compatibility_retains_unconfirmed_price_derivation():
     assert entry.rps == Decimal("100.00")
     assert entry.quantity == 50
 
+
+# ---------------------------------------------------------------------------
+# 8. Market-Data Availability Guard Regression Tests
+# ---------------------------------------------------------------------------
+
+def _sample_records_for_year(year: int, symbol: str = "RELIANCE") -> list[dict[str, Any]]:
+    return [
+        {
+            "date": f"{year}-10-23",
+            "symbol": symbol,
+            "series": "EQ",
+            "open": 2500.0,
+            "high": 2550.0,
+            "low": 2490.0,
+            "close": 2520.0,
+            "volume": 500000,
+            "adj_factor_cumulative": 1.0,
+            "adj_close": 2520.0,
+            "isin": "INE002A01018",
+        }
+    ]
+
+
+def test_availability_guard_every_required_partition_present(tmp_path):
+    """When all required annual partitions are present, the guard allows processing to continue."""
+    calendar = NSETradingCalendar()
+    # Year 2026 as-of date with 2 lookback years requires 2025 and 2026 partitions
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", _sample_records_for_year(2025))
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", _sample_records_for_year(2026))
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    import asyncio
+    quotes = asyncio.run(provider.get_reference_quotes_batch(["RELIANCE"]))
+    assert "RELIANCE" in quotes
+    assert quotes["RELIANCE"].last_price == Decimal("2520.0")
+
+
+def test_availability_guard_only_current_year_present_raises(tmp_path):
+    """When only the current-year partition is present, missing prior year raises MarketDataUnavailableError."""
+    calendar = NSETradingCalendar()
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    # Only 2026 partition is present; 2025 is missing
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", _sample_records_for_year(2026))
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    import asyncio
+    with pytest.raises(MarketDataUnavailableError) as exc_info:
+        asyncio.run(provider.get_reference_quotes_batch(["RELIANCE"]))
+
+    err_msg = str(exc_info.value)
+    assert "2025" in err_msg
+    assert "missing" in err_msg.lower()
+
+
+def test_availability_guard_only_prior_year_present_raises(tmp_path):
+    """When only the prior-year partition is present, missing current year raises MarketDataUnavailableError."""
+    calendar = NSETradingCalendar()
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    # Only 2025 partition is present; 2026 is missing
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", _sample_records_for_year(2025))
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    import asyncio
+    with pytest.raises(MarketDataUnavailableError) as exc_info:
+        asyncio.run(provider.get_reference_quotes_batch(["RELIANCE"]))
+
+    err_msg = str(exc_info.value)
+    assert "2026" in err_msg
+    assert "missing" in err_msg.lower()
+
+
+def test_availability_guard_no_required_partitions_present_raises(tmp_path):
+    """When no required partitions are present on disk, MarketDataUnavailableError is raised with all missing years."""
+    calendar = NSETradingCalendar()
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    # Neither 2025 nor 2026 partition exists
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    import asyncio
+    with pytest.raises(MarketDataUnavailableError) as exc_info:
+        asyncio.run(provider.get_reference_quotes_batch(["RELIANCE"]))
+
+    err_msg = str(exc_info.value)
+    assert "2025" in err_msg
+    assert "2026" in err_msg
+    assert "missing" in err_msg.lower()
+
+
+def test_availability_guard_auto_sync_disabled_with_missing_partition_rejects(tmp_path):
+    """When auto_sync=False and a required partition is missing, incomplete data is strictly rejected."""
+    calendar = NSETradingCalendar()
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", _sample_records_for_year(2026))
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    import asyncio
+    with pytest.raises(MarketDataUnavailableError) as exc_info:
+        asyncio.run(provider.get_reference_quotes_batch(["RELIANCE"]))
+
+    assert "2025" in str(exc_info.value)
+
+
+def test_screener_rejects_incomplete_partitions_without_caching_or_zero_return(tmp_path):
+    """Verify UniverseScreenerService raises MarketDataUnavailableError when a partition is missing,
+
+    and does not return 0 qualifying stocks or cache an incomplete screening result.
+    """
+    calendar = NSETradingCalendar()
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    # Only 2026 partition present; 2025 missing
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", _sample_records_for_year(2026))
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    class MockUniverseService:
+        def get_status(self, as_of_date=None):
+            from app.schemas.universe import UniverseStatusRead
+            return UniverseStatusRead(
+                is_available=True,
+                is_valid_for_date=True,
+                status="VALID",
+                status_reason="Active and valid",
+                dataset_version="AMFI-2026-H2-V1",
+                classification_period="JUL_DEC_2026",
+                source_period_label="July 2026 - December 2026",
+                effective_from=date(2026, 7, 1),
+                effective_to=date(2026, 12, 31),
+                as_of_date=date(2026, 10, 23),
+                is_stale=False,
+                days_until_expiration=65,
+                constituent_count=1,
+            )
+
+        def get_constituents(self, as_of_date=None):
+            return [
+                UniverseConstituent(
+                    rank=1,
+                    isin="INE002A01018",
+                    company_name="Reliance Industries Ltd",
+                    source_symbol="RELIANCE",
+                    canonical_nse_symbol="RELIANCE",
+                    upstox_instrument_key="NSE_EQ|INE002A01018",
+                ),
+            ]
+
+    from app.services.market_data.cache import MarketDataCache
+    screener_cache = MarketDataCache()
+
+    screener = UniverseScreenerService(
+        universe_service=MockUniverseService(),
+        provider=provider,
+        calendar=calendar,
+        clock=lambda: as_of,
+        screener_cache=screener_cache,
+    )
+
+    import asyncio
+    with pytest.raises(MarketDataUnavailableError):
+        asyncio.run(screener.screen_universe())
+
+    # Ensure no incomplete screening result was cached
+    cache_key = f"universe_screen:AMFI-2026-H2-V1:{as_of.date().isoformat()}"
+    assert screener_cache.get(cache_key) is None

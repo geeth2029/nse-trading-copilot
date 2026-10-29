@@ -20,14 +20,31 @@ class AuthenticatedSession:
 
 
 def require_same_origin(request: Request) -> None:
+    """Accept requests whose Origin matches either the backend's own base_url
+    (local / direct same-origin) or the single configured allowed_origin
+    (Vercel proxy — browser origin is the frontend domain).
+
+    All other origins are rejected with 403.  We never trust arbitrary
+    forwarded headers and never accept wildcard origins with credentials.
+    """
     origin = request.headers.get("origin")
     if not origin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Same-origin request required.")
 
     received = urlsplit(origin)
-    expected = urlsplit(str(request.base_url))
-    if received.scheme != expected.scheme or received.netloc.lower() != expected.netloc.lower():
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Same-origin request required.")
+
+    # 1) Classic same-origin: origin matches the backend's own address.
+    expected_backend = urlsplit(str(request.base_url))
+    if received.scheme == expected_backend.scheme and received.netloc.lower() == expected_backend.netloc.lower():
+        return
+
+    # 2) Vercel-proxy origin: origin matches the exact configured frontend URL.
+    settings = request.app.state.settings
+    allowed = urlsplit(settings.allowed_origin)
+    if allowed.netloc and received.scheme == allowed.scheme and received.netloc.lower() == allowed.netloc.lower():
+        return
+
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Same-origin request required.")
 
 
 def get_authenticated_session(

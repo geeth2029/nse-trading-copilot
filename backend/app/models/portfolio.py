@@ -84,6 +84,7 @@ class TradeEntry(TimestampMixin, Base):
             "position_id",
             unique=True,
             sqlite_where=text("entry_type = 'INITIAL_ENTRY'"),
+            postgresql_where=text("entry_type = 'INITIAL_ENTRY'"),
         ),
     )
 

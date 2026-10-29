@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers.auth import router as auth_router
 from app.api.routers.health import router as health_router
@@ -40,6 +41,19 @@ def create_app(
         engine.dispose()
 
     app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
+
+    # ── CORS ──────────────────────────────────────────────────────────────────
+    # Permit exactly the one configured frontend origin (e.g. the Vercel URL).
+    # allow_credentials=True is required for session-cookie transmission.
+    # Never use allow_origins=["*"] with allow_credentials=True.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[app_settings.allowed_origin],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "x-csrf-token", "Accept"],
+    )
+
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.settings = app_settings
@@ -54,4 +68,12 @@ def create_app(
     return app
 
 
+
+import os
+
 app = create_app()
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)

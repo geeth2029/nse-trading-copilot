@@ -23,6 +23,11 @@ from app.services.market_data.base import (
 )
 from app.services.market_data.cache import MarketDataCache
 from app.services.market_data.calendar import IST, NSETradingCalendar
+from app.services.market_data.errors import (
+    MarketDataUnavailableError,
+    ProviderAuthenticationError,
+    RateLimitExceededError,
+)
 from app.services.market_data.indicators import calculate_technical_indicators
 from app.services.market_data.universe_service import (
     UniverseNotAvailableError,
@@ -215,9 +220,16 @@ class UniverseScreenerService:
         # A. Batch quote fetch
         try:
             quotes = await self._provider.get_reference_quotes_batch(symbols)
+        except (ProviderAuthenticationError, RateLimitExceededError, MarketDataUnavailableError):
+            raise
         except Exception as exc:
             logger.error("Failed to retrieve batch quotes: %s", exc)
             quotes = {}
+
+        if not quotes and constituents:
+            raise MarketDataUnavailableError(
+                "Market data is currently unavailable from provider for universe constituents."
+            )
 
         # B. Bounded concurrent weekly candle fetch and indicator derivation
         semaphore = asyncio.Semaphore(self._concurrency_limit)

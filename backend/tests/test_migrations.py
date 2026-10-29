@@ -59,7 +59,7 @@ def test_initial_migration_builds_model_schema_on_fresh_sqlite(tmp_path):
         )
         with engine.connect() as connection:
             current_revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert current_revision == "670bf16a5ea0"
+        assert current_revision == "a1b2c3d4e5f6"
     finally:
         engine.dispose()
 

@@ -9,6 +9,8 @@ data/universe/*
 *.db
 *.sqlite
 *.sqlite3
+# Migration script backups (timestamped copies of the local SQLite database)
+*.bak.db
 __pycache__/
 .pytest_cache/
 .coverage

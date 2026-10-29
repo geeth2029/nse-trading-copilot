@@ -33,6 +33,14 @@ class Settings:
     tej_auto_sync: bool = True
     tej_request_timeout_seconds: float = 30.0
     tej_lookback_years: int = 2
+    # ── Deployment / proxy settings ────────────────────────────────────────────
+    # The exact HTTPS origin of the frontend (e.g. https://your-app.vercel.app).
+    # Used in CORS headers and the same-origin / proxy-origin check.
+    # For local development the default matches the Vite dev-server default.
+    allowed_origin: str = "http://localhost:5173"
+    # When the frontend is served at a different subdomain (Vercel preview URLs)
+    # the backend only trusts the single exact origin above.  Do not set this to
+    # a wildcard or a list — one explicit origin is the safe choice.
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -62,4 +70,5 @@ class Settings:
             tej_auto_sync=os.getenv("TEJ_AUTO_SYNC", "true").lower() == "true",
             tej_request_timeout_seconds=float(os.getenv("TEJ_REQUEST_TIMEOUT_SECONDS", str(defaults.tej_request_timeout_seconds))),
             tej_lookback_years=int(os.getenv("TEJ_LOOKBACK_YEARS", str(defaults.tej_lookback_years))),
+            allowed_origin=os.getenv("ALLOWED_ORIGIN", defaults.allowed_origin),
         )

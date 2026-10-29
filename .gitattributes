@@ -1,0 +1,12 @@
+# Normalize text files to LF for consistent cross-platform development
+
+* text=auto eol=lf
+
+# Explicitly enforce LF for Python source files
+
+*.py text eol=lf
+
+# Preserve LF for AMFI universe data and manifests used in SHA-256 integrity checks
+
+backend/data/universe/*.json text eol=lf
+backend/data/universe/*.manifest.json text eol=lf
