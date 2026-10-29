@@ -70,5 +70,5 @@ class Settings:
             tej_auto_sync=os.getenv("TEJ_AUTO_SYNC", "true").lower() == "true",
             tej_request_timeout_seconds=float(os.getenv("TEJ_REQUEST_TIMEOUT_SECONDS", str(defaults.tej_request_timeout_seconds))),
             tej_lookback_years=int(os.getenv("TEJ_LOOKBACK_YEARS", str(defaults.tej_lookback_years))),
-            allowed_origin=os.getenv("ALLOWED_ORIGIN", defaults.allowed_origin),
+            allowed_origin=os.getenv("ALLOWED_ORIGIN", defaults.allowed_origin).strip(),
         )

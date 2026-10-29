@@ -19,32 +19,63 @@ class AuthenticatedSession:
     session: AuthSession
 
 
+def _origin_tuple(parsed) -> tuple[str, str, int | None]:
+    scheme = (parsed.scheme or "").lower()
+    host = (parsed.hostname or "").lower()
+    port = parsed.port
+    if (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
+        port = None
+    return (scheme, host, port)
+
+
 def require_same_origin(request: Request) -> None:
-    """Accept requests whose Origin matches either the backend's own base_url
+    """Accept requests whose Origin or Referer matches either the backend's own base_url
     (local / direct same-origin) or the single configured allowed_origin
     (Vercel proxy — browser origin is the frontend domain).
 
-    All other origins are rejected with 403.  We never trust arbitrary
+    Standard browsers (e.g. Safari / WebKit) omit the Origin header on same-origin
+    POST requests, sending only the Referer header. Following OWASP CSRF prevention
+    guidelines:
+    1. If Origin is present (and not 'null'), validate it. If it fails, reject immediately.
+    2. If Origin is absent, inspect Referer and validate its origin.
+    3. If both are absent or neither matches, reject with 403.
+
+    All other origins are rejected with 403. We never trust arbitrary
     forwarded headers and never accept wildcard origins with credentials.
     """
-    origin = request.headers.get("origin")
-    if not origin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Same-origin request required.")
-
-    received = urlsplit(origin)
-
-    # 1) Classic same-origin: origin matches the backend's own address.
-    expected_backend = urlsplit(str(request.base_url))
-    if received.scheme == expected_backend.scheme and received.netloc.lower() == expected_backend.netloc.lower():
-        return
-
-    # 2) Vercel-proxy origin: origin matches the exact configured frontend URL.
     settings = request.app.state.settings
-    allowed = urlsplit(settings.allowed_origin)
-    if allowed.netloc and received.scheme == allowed.scheme and received.netloc.lower() == allowed.netloc.lower():
+    allowed = urlsplit(settings.allowed_origin.strip())
+    expected_backend = urlsplit(str(request.base_url))
+
+    expected_origins = {_origin_tuple(expected_backend)}
+    if allowed.scheme and allowed.hostname:
+        expected_origins.add(_origin_tuple(allowed))
+
+    def _matches(candidate_url: str) -> bool:
+        parsed = urlsplit(candidate_url)
+        cand = _origin_tuple(parsed)
+        if not cand[0] or not cand[1]:
+            return False
+        return cand in expected_origins
+
+    origin = request.headers.get("origin")
+    if origin is not None and origin.strip():
+        origin_val = origin.strip()
+        if origin_val.lower() != "null" and _matches(origin_val):
+            return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Same-origin request required.",
+        )
+
+    referer = request.headers.get("referer")
+    if referer and referer.strip() and _matches(referer.strip()):
         return
 
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Same-origin request required.")
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Same-origin request required.",
+    )
 
 
 def get_authenticated_session(

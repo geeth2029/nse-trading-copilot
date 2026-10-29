@@ -234,13 +234,94 @@ def test_register_rejected_with_attacker_origin(tmp_path):
 
 
 def test_register_rejected_with_no_origin(tmp_path):
-    """register must be rejected when no Origin header is present."""
+    """register must be rejected when neither Origin nor Referer header is present."""
     with _make_client(tmp_path, allowed_origin="https://myapp.vercel.app") as client:
         r = client.post(
             "/auth/register",
             json={"email": "user@example.com", "password": "secret-password-123"},
         )
         assert r.status_code == 403
+
+
+def test_register_accepted_with_configured_allowed_referer(tmp_path):
+    """register must succeed when Origin is omitted (e.g. Safari / same-origin fetch)
+    but Referer matches the configured allowed_origin (Vercel proxy)."""
+    frontend_origin = "https://myapp.vercel.app"
+    with _make_client(tmp_path, allowed_origin=frontend_origin) as client:
+        r = client.post(
+            "/auth/register",
+            headers={"Referer": f"{frontend_origin}/register"},
+            json={"email": "user@example.com", "password": "secret-password-123"},
+        )
+        assert r.status_code == 201
+
+
+def test_register_accepted_with_backend_same_origin_referer(tmp_path):
+    """register must succeed when Origin is omitted and Referer matches the backend base_url."""
+    with _make_client(tmp_path, allowed_origin="https://myapp.vercel.app") as client:
+        r = client.post(
+            "/auth/register",
+            headers={"Referer": "https://backend.onrender.com/docs"},
+            json={"email": "user@example.com", "password": "secret-password-123"},
+        )
+        assert r.status_code == 201
+
+
+def test_register_rejected_with_attacker_referer(tmp_path):
+    """register must be rejected when Origin is omitted and Referer is untrusted."""
+    with _make_client(tmp_path, allowed_origin="https://myapp.vercel.app") as client:
+        r = client.post(
+            "/auth/register",
+            headers={"Referer": "https://attacker.example.com/phish"},
+            json={"email": "user@example.com", "password": "secret-password-123"},
+        )
+        assert r.status_code == 403
+
+
+def test_register_rejected_when_origin_is_attacker_even_with_valid_referer(tmp_path):
+    """Origin takes precedence over Referer: if an attacker sends an untrusted Origin,
+    the request must be rejected even if a valid Referer is present."""
+    frontend_origin = "https://myapp.vercel.app"
+    with _make_client(tmp_path, allowed_origin=frontend_origin) as client:
+        r = client.post(
+            "/auth/register",
+            headers={
+                "Origin": "https://attacker.example.com",
+                "Referer": f"{frontend_origin}/register",
+            },
+            json={"email": "user@example.com", "password": "secret-password-123"},
+        )
+        assert r.status_code == 403
+
+
+def test_register_rejected_with_null_origin(tmp_path):
+    """register must be rejected when Origin is 'null' (sandboxed iframe / opaque origin)."""
+    with _make_client(tmp_path, allowed_origin="https://myapp.vercel.app") as client:
+        r = client.post(
+            "/auth/register",
+            headers={"Origin": "null"},
+            json={"email": "user@example.com", "password": "secret-password-123"},
+        )
+        assert r.status_code == 403
+
+
+def test_login_accepted_with_configured_allowed_referer(tmp_path):
+    """login must succeed when Origin is omitted but Referer matches allowed_origin."""
+    frontend_origin = "https://myapp.vercel.app"
+    with _make_client(tmp_path, allowed_origin=frontend_origin) as client:
+        # Register first
+        client.post(
+            "/auth/register",
+            headers={"Referer": f"{frontend_origin}/register"},
+            json={"email": "user@example.com", "password": "secret-password-123"},
+        )
+        # Login with Referer
+        r = client.post(
+            "/auth/login",
+            headers={"Referer": f"{frontend_origin}/login"},
+            json={"email": "user@example.com", "password": "secret-password-123"},
+        )
+        assert r.status_code == 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
