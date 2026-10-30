@@ -967,3 +967,178 @@ def test_screener_rejects_incomplete_partitions_without_caching_or_zero_return(t
     # Ensure no incomplete screening result was cached
     cache_key = f"universe_screen:AMFI-2026-H2-V1:{as_of.date().isoformat()}"
     assert screener_cache.get(cache_key) is None
+
+
+def create_test_parquet_bytes(records: list[dict[str, Any]]) -> bytes:
+    """Helper to generate in-memory bytes of a valid test Parquet partition."""
+    import io
+    schema = pa.schema([
+        ("date", pa.string()),
+        ("symbol", pa.string()),
+        ("series", pa.string()),
+        ("open", pa.float64()),
+        ("high", pa.float64()),
+        ("low", pa.float64()),
+        ("close", pa.float64()),
+        ("volume", pa.int64()),
+        ("adj_factor_cumulative", pa.float64()),
+        ("adj_close", pa.float64()),
+        ("isin", pa.string()),
+    ])
+    data: dict[str, list[Any]] = {field.name: [] for field in schema}
+    for r in records:
+        for field in schema:
+            data[field.name].append(r.get(field.name))
+    table = pa.Table.from_pydict(data, schema=schema)
+    sink = io.BytesIO()
+    pq.write_table(table, sink)
+    return sink.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# 11. Concurrency, Atomic Download, and Lock Protection Tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_concurrent_synchronization_calls_download_each_partition_once_and_succeed(tmp_path):
+    """Simulate 10 concurrent synchronization calls against an initially empty cache.
+
+    Verifies:
+    - Partition sync is serialized via asyncio.Lock.
+    - Each required partition is downloaded exactly once across all 10 calls.
+    - All 10 concurrent calls complete successfully.
+    - Final Parquet files have a valid schema.
+    - All temporary files are cleaned up.
+    """
+    import asyncio
+    import httpx
+
+    cache_dir = tmp_path / "concurrent_cache"
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    calendar = NSETradingCalendar()
+
+    download_counts: dict[str, int] = {}
+    bytes_2025 = create_test_parquet_bytes(_sample_records_for_year(2025))
+    bytes_2026 = create_test_parquet_bytes(_sample_records_for_year(2026))
+
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        url_str = str(request.url)
+        download_counts[url_str] = download_counts.get(url_str, 0) + 1
+        # Add latency to simulate streaming and guarantee overlap if locking failed
+        await asyncio.sleep(0.02)
+        if "nse_2025.parquet" in url_str:
+            return httpx.Response(200, content=bytes_2025)
+        elif "nse_2026.parquet" in url_str:
+            return httpx.Response(200, content=bytes_2026)
+        elif "status" in url_str:
+            return httpx.Response(200, json={"trading_date": "2026-10-23"})
+        return httpx.Response(404)
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(mock_handler))
+
+    provider = TejMarketDataProvider(
+        data_dir=cache_dir,
+        calendar=calendar,
+        client=mock_client,
+        clock=lambda: as_of,
+        auto_sync=True,
+    )
+
+    # Launch 10 simultaneous synchronization calls
+    tasks = [provider.sync_partitions_if_needed(now_utc=as_of) for _ in range(10)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # 1. Verify all 10 calls completed successfully
+    assert all(r is None for r in results), f"Some synchronization tasks failed: {results}"
+
+    # 2. Verify each partition URL was downloaded exactly once
+    url_2025 = f"{provider._dataset_base_url}/nse_2025.parquet"
+    url_2026 = f"{provider._dataset_base_url}/nse_2026.parquet"
+    assert download_counts.get(url_2025) == 1, f"Expected 1 download for 2025, got {download_counts.get(url_2025)}"
+    assert download_counts.get(url_2026) == 1, f"Expected 1 download for 2026, got {download_counts.get(url_2026)}"
+
+    # 3. Verify final Parquet files exist and have valid schema
+    path_2025 = provider.get_partition_path(2025)
+    path_2026 = provider.get_partition_path(2026)
+    assert path_2025.exists()
+    assert path_2026.exists()
+    schema_2025 = pq.read_schema(path_2025)
+    schema_2026 = pq.read_schema(path_2026)
+    assert "symbol" in schema_2025.names
+    assert "adj_close" in schema_2026.names
+
+    # 4. Verify no temporary files remain
+    tmp_files = list(cache_dir.glob("*.tmp"))
+    assert tmp_files == [], f"Found orphaned temporary files: {tmp_files}"
+
+
+@pytest.mark.anyio
+async def test_missing_parent_directories_created_automatically(tmp_path):
+    """Verify missing parent directories are created automatically before writing partition."""
+    import httpx
+
+    nested_dir = tmp_path / "deeply" / "nested" / "market_data" / "tejhq"
+    assert not nested_dir.exists()
+
+    bytes_2026 = create_test_parquet_bytes(_sample_records_for_year(2026))
+
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=bytes_2026)
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(mock_handler))
+    target_path = nested_dir / "prices_adjusted_nse_2026.parquet"
+
+    provider = TejMarketDataProvider(
+        data_dir=nested_dir,
+        client=mock_client,
+        auto_sync=False,
+    )
+
+    await provider._download_partition_atomic("http://example.com/nse_2026.parquet", target_path)
+
+    assert nested_dir.exists()
+    assert target_path.exists()
+    schema = pq.read_schema(target_path)
+    assert "symbol" in schema.names
+    assert list(nested_dir.glob("*.tmp")) == []
+
+
+@pytest.mark.anyio
+async def test_failed_download_does_not_damage_existing_valid_partition(tmp_path):
+    """Verify a failed or corrupted download does not overwrite or corrupt an existing valid partition."""
+    import httpx
+
+    cache_dir = tmp_path / "resilience_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    target_path = cache_dir / "prices_adjusted_nse_2026.parquet"
+
+    # Seed with an existing valid partition
+    initial_records = _sample_records_for_year(2026)
+    create_test_parquet(target_path, initial_records)
+    initial_mtime = target_path.stat().st_mtime
+    initial_table = pq.read_table(target_path)
+    assert initial_table.num_rows > 0
+
+    # Handler returns corrupt data (not a valid Parquet file)
+    async def mock_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"THIS_IS_CORRUPT_NOT_PARQUET_DATA")
+
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(mock_handler))
+    provider = TejMarketDataProvider(
+        data_dir=cache_dir,
+        client=mock_client,
+        auto_sync=False,
+    )
+
+    with pytest.raises(MarketDataUnavailableError):
+        await provider._download_partition_atomic("http://example.com/nse_2026.parquet", target_path)
+
+    # Verify existing partition is completely intact and undamaged
+    assert target_path.exists()
+    assert target_path.stat().st_mtime == initial_mtime
+    preserved_table = pq.read_table(target_path)
+    assert preserved_table.num_rows == initial_table.num_rows
+
+    # Verify temporary files were cleaned up
+    tmp_files = list(cache_dir.glob("*.tmp"))
+    assert tmp_files == [], f"Found orphaned temporary files: {tmp_files}"

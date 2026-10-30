@@ -4,6 +4,7 @@ Provides 100% free, end-of-day (EOD) market data for NSE cash equity instruments
 without requiring Demat accounts, broker credentials, or paid subscriptions.
 """
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
@@ -15,6 +16,7 @@ import shutil
 import tempfile
 import threading
 from typing import Any
+import uuid
 
 import httpx
 import pyarrow as pa
@@ -169,6 +171,14 @@ class TejMarketDataProvider(MarketDataProvider):
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._isin_index: dict[str, str] | None = None
         self._index_lock = threading.Lock()
+        self._sync_lock: asyncio.Lock | None = None
+
+    @property
+    def sync_lock(self) -> asyncio.Lock:
+        """Process-local asyncio lock ensuring serialized partition synchronization."""
+        if self._sync_lock is None:
+            self._sync_lock = asyncio.Lock()
+        return self._sync_lock
 
     def _get_now(self) -> datetime:
         """Resolve current UTC timestamp using injected clock or system time."""
@@ -210,38 +220,42 @@ class TejMarketDataProvider(MarketDataProvider):
         if not self._auto_sync:
             return
 
-        now = now_utc or self._get_now()
-        required_years = self._get_required_years(now)
-        latest_completed_day = self._calendar.get_latest_completed_trading_day(now)
+        async with self.sync_lock:
+            now = now_utc or self._get_now()
+            required_years = self._get_required_years(now)
+            latest_completed_day = self._calendar.get_latest_completed_trading_day(now)
 
-        for year in required_years:
-            target_path = self.get_partition_path(year)
-            needs_download = False
+            for year in required_years:
+                target_path = self.get_partition_path(year)
+                needs_download = False
 
-            if not target_path.exists():
-                needs_download = True
-            elif year == now.year:
-                # Check if current year's file contains the latest completed trading day
-                try:
-                    max_date = self._get_max_date_in_partition(target_path)
-                    if max_date is None or max_date < latest_completed_day:
-                        # Check upstream status: if upstream has not published a date newer than our cache, skip redundant download
-                        upstream_date = await self.get_latest_upstream_trading_date()
-                        if upstream_date is not None and max_date is not None and max_date >= upstream_date:
-                            needs_download = False
-                        else:
-                            needs_download = True
-                except Exception:
+                # Re-check partition existence and freshness under the lock
+                if not target_path.exists():
                     needs_download = True
+                elif year == now.year:
+                    # Check if current year's file contains the latest completed trading day
+                    try:
+                        max_date = self._get_max_date_in_partition(target_path)
+                        if max_date is None or max_date < latest_completed_day:
+                            # Check upstream status: if upstream has not published a date newer than our cache, skip redundant download
+                            upstream_date = await self.get_latest_upstream_trading_date()
+                            if upstream_date is not None and max_date is not None and max_date >= upstream_date:
+                                needs_download = False
+                            else:
+                                needs_download = True
+                    except Exception:
+                        needs_download = True
 
-            if needs_download:
-                download_url = f"{self._dataset_base_url}/nse_{year}.parquet"
-                await self._download_partition_atomic(download_url, target_path)
+                if needs_download:
+                    download_url = f"{self._dataset_base_url}/nse_{year}.parquet"
+                    await self._download_partition_atomic(download_url, target_path)
 
     async def _download_partition_atomic(self, url: str, target_path: Path) -> None:
-        """Download remote Parquet file to temporary path and atomically replace target."""
-        temp_file = target_path.with_suffix(".parquet.tmp")
-        logger.info("Downloading TejHQ partition from %s to %s", url, target_path)
+        """Download remote Parquet file to unique temporary path and atomically replace target."""
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        unique_id = uuid.uuid4().hex
+        temp_file = target_path.with_name(f"{target_path.stem}.{unique_id}.tmp")
+        logger.info("Downloading TejHQ partition from %s to %s via %s", url, target_path, temp_file.name)
 
         try:
             if self._client is not None:
@@ -273,12 +287,16 @@ class TejMarketDataProvider(MarketDataProvider):
             temp_file.replace(target_path)
             logger.info("Successfully installed partition %s", target_path.name)
         except Exception as exc:
-            if temp_file.exists():
-                temp_file.unlink(missing_ok=True)
             logger.error("Error downloading partition %s: %s", target_path.name, exc)
             raise MarketDataUnavailableError(
                 f"Failed to synchronize market data partition {target_path.name}: {exc}"
             ) from exc
+        finally:
+            if temp_file.exists():
+                try:
+                    temp_file.unlink(missing_ok=True)
+                except Exception as clean_exc:
+                    logger.warning("Failed to clean up temporary file %s: %s", temp_file, clean_exc)
 
     def _get_max_date_in_partition(self, partition_path: Path) -> date | None:
         """Read the maximum trading date present in a Parquet partition."""
