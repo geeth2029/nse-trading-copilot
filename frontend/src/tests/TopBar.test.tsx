@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AuthProvider } from '../context/AuthContext';
 import { PortfolioProvider } from '../context/PortfolioContext';
-import { TopBar } from '../components/layout/TopBar';
+import { TopBar, formatRefSessionDate } from '../components/layout/TopBar';
 import * as api from '../services/api';
 import type { UserRead } from '../services/api';
 import type { MarketSnapshotRead, UniverseStatusRead } from '../types/trading';
@@ -684,5 +684,129 @@ describe('TopBar Component Authentication Integration', () => {
       (el) => el.textContent.includes('VERIFIED EOD')
     );
     expect(verifiedBadge).toBeNull();
+  });
+
+  describe('formatRefSessionDate helper', () => {
+    it('returns Ref As-Of: 23-Oct Close in Demo Mode', () => {
+      expect(formatRefSessionDate(null, false)).toBe('Ref As-Of: 23-Oct Close');
+      expect(formatRefSessionDate('2026-10-29T15:30:00+05:30', false)).toBe('Ref As-Of: 23-Oct Close');
+    });
+
+    it('formats valid timestamp in Asia/Kolkata timezone with day-month in authenticated mode', () => {
+      expect(formatRefSessionDate('2026-10-29T15:30:00+05:30', true)).toBe('Ref As-Of: 29-Oct Close');
+      expect(formatRefSessionDate('2026-10-29T19:00:00Z', true)).toBe('Ref As-Of: 30-Oct Close');
+    });
+
+    it('returns Market date unavailable for invalid or missing timestamps in authenticated mode', () => {
+      expect(formatRefSessionDate(null, true)).toBe('Market date unavailable');
+      expect(formatRefSessionDate(undefined, true)).toBe('Market date unavailable');
+      expect(formatRefSessionDate('', true)).toBe('Market date unavailable');
+      expect(formatRefSessionDate('not-a-date', true)).toBe('Market date unavailable');
+    });
+  });
+
+  it('displays 29-Oct Close in authenticated mode when snapshot has 29 October timestamp', async () => {
+    const oct29Snapshot: MarketSnapshotRead = {
+      ...mockFreshTejSnapshot,
+      quoteTimestamp: '2026-10-29T15:30:00+05:30',
+    };
+    vi.spyOn(api, 'fetchCurrentUser').mockResolvedValue(mockUser);
+    vi.spyOn(api, 'fetchPortfolioPositions').mockResolvedValue({ positions: [] });
+    vi.spyOn(api, 'fetchLargeCapUniverseStatus').mockResolvedValue(mockValidUniverse);
+    vi.spyOn(api, 'fetchMarketSnapshot').mockResolvedValue(oct29Snapshot);
+
+    await act(async () => {
+      root.render(
+        <AuthProvider>
+          <PortfolioProvider>
+            <TopBar pageTitle="Trading Terminal Dashboard" />
+          </PortfolioProvider>
+        </AuthProvider>
+      );
+    });
+
+    // Top-right session pill
+    const refDateEl = container.find(
+      (el) => el.textContent.includes('29-Oct Close')
+    );
+    expect(refDateEl).not.toBeNull();
+    expect(refDateEl?.textContent).toContain('Ref As-Of: 29-Oct Close');
+
+    // Confirm it does NOT display 23-Oct
+    const oldDateEl = container.find(
+      (el) => el.textContent.includes('23-Oct Close')
+    );
+    expect(oldDateEl).toBeNull();
+
+    // DataStatusBadge popover check
+    const badgeBtn = container.find(
+      (el) => el.tagName === 'BUTTON' && el.textContent.includes('VERIFIED EOD')
+    );
+    expect(badgeBtn).not.toBeNull();
+    await act(async () => {
+      simulateClick(badgeBtn);
+    });
+    const asOfDisplay = container.find(
+      (el) => el.textContent.includes('2026-10-29T15:30:00+05:30')
+    );
+    expect(asOfDisplay).not.toBeNull();
+  });
+
+  it('displays Market date unavailable when timestamp is unavailable in authenticated mode and does not fall back to 23 October', async () => {
+    const nullTimestampSnapshot: MarketSnapshotRead = {
+      ...mockFreshTejSnapshot,
+      quoteTimestamp: null as unknown as string,
+    };
+    vi.spyOn(api, 'fetchCurrentUser').mockResolvedValue(mockUser);
+    vi.spyOn(api, 'fetchPortfolioPositions').mockResolvedValue({ positions: [] });
+    vi.spyOn(api, 'fetchLargeCapUniverseStatus').mockResolvedValue(mockValidUniverse);
+    vi.spyOn(api, 'fetchMarketSnapshot').mockResolvedValue(nullTimestampSnapshot);
+
+    await act(async () => {
+      root.render(
+        <AuthProvider>
+          <PortfolioProvider>
+            <TopBar pageTitle="Trading Terminal Dashboard" />
+          </PortfolioProvider>
+        </AuthProvider>
+      );
+    });
+
+    const unavailableEl = container.find(
+      (el) => el.textContent.includes('Market date unavailable')
+    );
+    expect(unavailableEl).not.toBeNull();
+
+    // Confirm it did NOT fall back to 23 October
+    const fallbackEl = container.find(
+      (el) => el.textContent.includes('23-Oct')
+    );
+    expect(fallbackEl).toBeNull();
+  });
+
+  it('retains demo fallback Ref As-Of: 23-Oct Close in Demo Mode', async () => {
+    vi.spyOn(api, 'fetchCurrentUser').mockRejectedValue(
+      new api.AuthenticationError('Authentication required.')
+    );
+
+    await act(async () => {
+      root.render(
+        <AuthProvider>
+          <PortfolioProvider>
+            <TopBar pageTitle="Trading Terminal Dashboard" />
+          </PortfolioProvider>
+        </AuthProvider>
+      );
+    });
+
+    const demoDateEl = container.find(
+      (el) => el.textContent.includes('Ref As-Of: 23-Oct Close')
+    );
+    expect(demoDateEl).not.toBeNull();
+
+    const unavailableEl = container.find(
+      (el) => el.textContent.includes('Market date unavailable')
+    );
+    expect(unavailableEl).toBeNull();
   });
 });

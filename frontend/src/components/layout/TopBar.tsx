@@ -45,12 +45,46 @@ export function formatProviderName(source?: string | null): string {
   return `${source} Market Data (NSE)`;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+// oxlint-disable-next-line react/only-export-components
+export function formatRefSessionDate(
+  timestamp?: string | null,
+  isAuthMode: boolean = false
+): string {
+  if (!isAuthMode) {
+    return 'Ref As-Of: 23-Oct Close';
+  }
+  if (!timestamp) {
+    return 'Market date unavailable';
+  }
+  const dateObj = new Date(timestamp);
+  if (isNaN(dateObj.getTime())) {
+    return 'Market date unavailable';
+  }
+  try {
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'Asia/Kolkata',
+    });
+    const parts = formatter.formatToParts(dateObj);
+    const day = parts.find((p) => p.type === 'day')?.value;
+    const month = parts.find((p) => p.type === 'month')?.value;
+    if (!day || !month) {
+      return 'Market date unavailable';
+    }
+    return `Ref As-Of: ${day}-${month} Close`;
+  } catch {
+    return 'Market date unavailable';
+  }
+}
+
 export const TopBar: FC<TopBarProps> = ({
   pageTitle,
   pageSubtitle,
   onToggleMobileMenu,
   dataStatus = 'SAMPLE DATA',
-  asOfTimestamp = '2026-10-23 15:30:00 IST',
+  asOfTimestamp,
   marketDataStatus,
   providerName,
   sourceText: explicitSourceText,
@@ -89,6 +123,7 @@ export const TopBar: FC<TopBarProps> = ({
         if (uStatus.status !== 'VALID') {
           setDataVerificationStatus('unavailable');
           setDetectedProvider(uStatus.datasetVersion || 'AMFI Universe');
+          setDetectedAsOf(null);
           return;
         }
 
@@ -100,6 +135,8 @@ export const TopBar: FC<TopBarProps> = ({
         setDetectedProvider(providerLabel);
         if (snapshot.quoteTimestamp) {
           setDetectedAsOf(snapshot.quoteTimestamp);
+        } else {
+          setDetectedAsOf(null);
         }
 
         if (snapshot.isStale) {
@@ -110,6 +147,7 @@ export const TopBar: FC<TopBarProps> = ({
       } catch {
         if (!isMounted) return;
         setDataVerificationStatus('error');
+        setDetectedAsOf(null);
       }
     }
 
@@ -145,6 +183,28 @@ export const TopBar: FC<TopBarProps> = ({
   };
 
   const userDisplayName = user?.displayName || user?.email || 'Paper Trader';
+
+  const effectiveStatus: MarketDataStatusType =
+    marketDataStatus ?? (!isAuthMode ? 'demo' : dataVerificationStatus);
+  const isEffectiveDemo = effectiveStatus === 'demo';
+
+  const isValidDate = (ts: string | null | undefined): boolean => {
+    if (!ts) return false;
+    const d = new Date(ts);
+    return !isNaN(d.getTime());
+  };
+
+  const activeAuthTimestamp =
+    detectedAsOf && isValidDate(detectedAsOf)
+      ? detectedAsOf
+      : asOfTimestamp && isValidDate(asOfTimestamp) && !asOfTimestamp.includes('2026-10-23')
+      ? asOfTimestamp
+      : null;
+
+  const refSessionText = formatRefSessionDate(
+    activeAuthTimestamp,
+    !isEffectiveDemo
+  );
 
   return (
     <>
@@ -233,18 +293,15 @@ export const TopBar: FC<TopBarProps> = ({
             {/* As-Of Session Date */}
             <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-400 font-mono bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
               <Clock className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Ref As-Of: 23-Oct Close</span>
+              <span>{refSessionText}</span>
             </div>
 
             {/* Prominent Data Status Badge */}
             {(() => {
-              const effectiveStatus: MarketDataStatusType =
-                marketDataStatus ?? (!isAuthMode ? 'demo' : dataVerificationStatus);
-
               let resolvedStatusText = dataStatus;
               let resolvedVariant: DataStatusVariant = 'warning';
               let resolvedSourceText = explicitSourceText || 'Static Demo Fixture (Non-Live)';
-              let resolvedAsOf = asOfTimestamp;
+              let resolvedAsOf: string;
 
               if (effectiveStatus === 'demo') {
                 resolvedStatusText = dataStatus || 'SAMPLE DATA';
@@ -264,7 +321,9 @@ export const TopBar: FC<TopBarProps> = ({
                   (providerName
                     ? formatProviderName(providerName)
                     : detectedProvider || 'TejHQ EOD Market Data (NSE)');
-                resolvedAsOf = asOfTimestamp || detectedAsOf || '2026-10-23 15:30:00 IST';
+                resolvedAsOf = !isEffectiveDemo
+                  ? (activeAuthTimestamp || 'Market date unavailable')
+                  : (detectedAsOf || asOfTimestamp || '2026-10-23 15:30:00 IST');
               } else if (effectiveStatus === 'stale') {
                 resolvedStatusText = 'STALE DATA';
                 resolvedVariant = 'warning';
@@ -273,7 +332,9 @@ export const TopBar: FC<TopBarProps> = ({
                   (providerName
                     ? `${formatProviderName(providerName)} (Stale)`
                     : `${detectedProvider || 'Market Provider'} (Stale)`);
-                resolvedAsOf = asOfTimestamp || detectedAsOf || 'Quote date is stale';
+                resolvedAsOf = !isEffectiveDemo
+                  ? (activeAuthTimestamp || 'Market date unavailable')
+                  : (asOfTimestamp || detectedAsOf || 'Quote date is stale');
               } else if (effectiveStatus === 'unavailable') {
                 resolvedStatusText = 'DATA UNAVAILABLE';
                 resolvedVariant = 'danger';
@@ -288,6 +349,8 @@ export const TopBar: FC<TopBarProps> = ({
                 resolvedVariant = 'danger';
                 resolvedSourceText = explicitSourceText || 'Market Data Provider Error';
                 resolvedAsOf = 'Provider Error';
+              } else {
+                resolvedAsOf = asOfTimestamp || 'Market date unavailable';
               }
 
               return (
