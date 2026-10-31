@@ -36,6 +36,7 @@ from app.services.market_data.calendar import (
 )
 from app.services.market_data.errors import (
     InstrumentNotFoundError,
+    MalformedDataError,
     MarketDataUnavailableError,
     StaleDataError,
 )
@@ -172,12 +173,24 @@ class TejMarketDataProvider(MarketDataProvider):
         self._isin_index: dict[str, str] | None = None
         self._index_lock = threading.Lock()
         self._sync_lock: asyncio.Lock | None = None
+        self._sync_lock_loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def sync_lock(self) -> asyncio.Lock:
-        """Process-local asyncio lock ensuring serialized partition synchronization."""
-        if self._sync_lock is None:
+        """Process-local asyncio lock ensuring serialized partition synchronization.
+
+        Recreated safely if the provider is reused across different event loops
+        (e.g., sequential asyncio.run calls in testing) using asyncio.get_running_loop()
+        without relying on private asyncio attributes.
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if self._sync_lock is None or self._sync_lock_loop is not current_loop:
             self._sync_lock = asyncio.Lock()
+            self._sync_lock_loop = current_loop
         return self._sync_lock
 
     def _get_now(self) -> datetime:
@@ -317,6 +330,7 @@ class TejMarketDataProvider(MarketDataProvider):
         self,
         symbols: list[str],
         now_utc: datetime,
+        malformed_symbols: set[str] | None = None,
     ) -> dict[str, list[DailyEquityRecord]]:
         """Read and parse daily records for given symbols across cached partitions."""
         required_years = self._get_required_years(now_utc)
@@ -358,34 +372,41 @@ class TejMarketDataProvider(MarketDataProvider):
 
             for i in range(row_count):
                 sym = pydict["symbol"][i]
-                d_val = pydict["date"][i]
-                rec_date = date.fromisoformat(d_val) if isinstance(d_val, str) else d_val
+                try:
+                    d_val = pydict["date"][i]
+                    rec_date = date.fromisoformat(d_val) if isinstance(d_val, str) else d_val
 
-                raw_close = Decimal(str(pydict["close"][i]))
-                raw_open = Decimal(str(pydict["open"][i]))
-                raw_high = Decimal(str(pydict["high"][i]))
-                raw_low = Decimal(str(pydict["low"][i]))
-                adj_factor = Decimal(str(pydict["adj_factor_cumulative"][i] or 1.0))
-                adj_close = Decimal(str(pydict["adj_close"][i] or raw_close * adj_factor))
-                vol = int(pydict["volume"][i] or 0)
-                isin = pydict["isin"][i]
-                series = pydict["series"][i]
+                    raw_close = Decimal(str(pydict["close"][i]))
+                    raw_open = Decimal(str(pydict["open"][i]))
+                    raw_high = Decimal(str(pydict["high"][i]))
+                    raw_low = Decimal(str(pydict["low"][i]))
+                    adj_factor = Decimal(str(pydict["adj_factor_cumulative"][i] or 1.0))
+                    adj_close = Decimal(str(pydict["adj_close"][i] or raw_close * adj_factor))
+                    vol = int(pydict["volume"][i] or 0)
+                    isin = pydict["isin"][i]
+                    series = pydict["series"][i]
 
-                rec = DailyEquityRecord(
-                    date=rec_date,
-                    symbol=sym,
-                    series=series,
-                    open=raw_open,
-                    high=raw_high,
-                    low=raw_low,
-                    close=raw_close,
-                    volume=vol,
-                    adj_factor_cumulative=adj_factor,
-                    adj_close=adj_close,
-                    isin=isin,
-                )
-                if sym in results:
-                    results[sym].append(rec)
+                    rec = DailyEquityRecord(
+                        date=rec_date,
+                        symbol=sym,
+                        series=series,
+                        open=raw_open,
+                        high=raw_high,
+                        low=raw_low,
+                        close=raw_close,
+                        volume=vol,
+                        adj_factor_cumulative=adj_factor,
+                        adj_close=adj_close,
+                        isin=isin,
+                    )
+                    if sym in results:
+                        results[sym].append(rec)
+                except Exception as exc:
+                    logger.warning("Malformed record for symbol %s in partition %s: %s", sym, path.name, exc)
+                    if malformed_symbols is not None:
+                        malformed_symbols.add(sym)
+                    elif len(symbols) == 1:
+                        raise
 
         # Sort each symbol's records chronologically
         for sym in results:
@@ -433,22 +454,57 @@ class TejMarketDataProvider(MarketDataProvider):
     ) -> list[WeeklyCandle]:
         """Fetch historical weekly candles in chronological order."""
         norm_symbol = symbol.strip().upper()
-        now_utc = self._get_now()
-
-        await self.sync_partitions_if_needed(now_utc)
-
-        data_map = self._load_daily_records_for_symbols([norm_symbol], now_utc)
-        records = data_map.get(norm_symbol, [])
-        if not records:
+        batch_result = await self.get_historical_weekly_candles_batch([norm_symbol], limit_weeks=limit_weeks)
+        if norm_symbol not in batch_result:
+            raise MalformedDataError(f"Market data for '{norm_symbol}' is malformed or unparseable.")
+        candles = batch_result[norm_symbol]
+        if not candles:
             raise InstrumentNotFoundError(
                 norm_symbol, f"Instrument '{norm_symbol}' not found in TejHQ market data."
             )
+        return candles
 
-        weekly_candles = self._aggregator.aggregate(records, norm_symbol, as_of=now_utc)
-        if limit_weeks > 0 and len(weekly_candles) > limit_weeks:
-            weekly_candles = weekly_candles[-limit_weeks:]
+    async def get_historical_weekly_candles_batch(
+        self,
+        symbols: list[str],
+        limit_weeks: int = 100,
+        concurrency_limit: int = 10,
+    ) -> dict[str, list[WeeklyCandle]]:
+        """Fetch historical weekly candles for multiple symbols using a single shared Parquet scan."""
+        norm_symbols = [s.strip().upper() for s in symbols]
+        now_utc = self._get_now()
 
-        return weekly_candles
+        # Synchronize partitions once for the entire batch
+        await self.sync_partitions_if_needed(now_utc)
+
+
+        malformed_symbols: set[str] = set()
+        data_map = self._load_daily_records_for_symbols(
+            norm_symbols,
+            now_utc,
+            malformed_symbols=malformed_symbols,
+        )
+
+        results: dict[str, list[WeeklyCandle]] = {}
+        for sym in norm_symbols:
+            if sym in malformed_symbols:
+                # Omit malformed symbols so caller can distinguish provider error from missing symbol
+                continue
+
+            records = data_map.get(sym, [])
+            if not records:
+                results[sym] = []
+                continue
+
+            try:
+                weekly_candles = self._aggregator.aggregate(records, sym, as_of=now_utc)
+                if limit_weeks > 0 and len(weekly_candles) > limit_weeks:
+                    weekly_candles = weekly_candles[-limit_weeks:]
+                results[sym] = weekly_candles
+            except Exception as exc:
+                logger.warning("Failed aggregating weekly candles for symbol %s: %s", sym, exc)
+
+        return results
 
     async def get_instrument_identifier(self, symbol: str) -> str | None:
         """Resolve an exchange symbol to the instrument identifier (ISIN or canonical key)."""

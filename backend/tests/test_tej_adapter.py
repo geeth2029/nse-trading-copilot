@@ -1142,3 +1142,444 @@ async def test_failed_download_does_not_damage_existing_valid_partition(tmp_path
     # Verify temporary files were cleaned up
     tmp_files = list(cache_dir.glob("*.tmp"))
     assert tmp_files == [], f"Found orphaned temporary files: {tmp_files}"
+
+
+# ---------------------------------------------------------------------------
+# 12. Batch Historical Candle Loading, Equivalence, & Event-Loop Tests
+# ---------------------------------------------------------------------------
+
+def test_cross_event_loop_sync_lock_reuse_does_not_hang(tmp_path):
+    """Verify that reusing the same provider across sequential asyncio.run calls recreates sync_lock and does not hang."""
+    import asyncio
+    calendar = NSETradingCalendar()
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", _sample_records_for_year(2025))
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", _sample_records_for_year(2026))
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    # Call 1 in Event Loop 1
+    quote1 = asyncio.run(provider.get_reference_quote("RELIANCE"))
+    assert quote1.symbol == "RELIANCE"
+
+    # Call 2 in Event Loop 2 (new loop created by asyncio.run)
+    candles = asyncio.run(provider.get_historical_weekly_candles("RELIANCE"))
+    assert len(candles) > 0
+
+
+@pytest.mark.anyio
+async def test_same_event_loop_concurrency_lock_preserves_synchronization(tmp_path):
+    """Verify that within the same event loop, sync_lock is shared across concurrent coroutines and serializes execution."""
+    import asyncio
+    calendar = NSETradingCalendar()
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", _sample_records_for_year(2025))
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", _sample_records_for_year(2026))
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    loop = asyncio.get_running_loop()
+    lock1 = provider.sync_lock
+    lock2 = provider.sync_lock
+
+    assert lock1 is lock2
+    assert provider._sync_lock_loop is loop
+
+    t1 = provider.sync_partitions_if_needed(now_utc=as_of)
+    t2 = provider.sync_partitions_if_needed(now_utc=as_of)
+    await asyncio.gather(t1, t2)
+
+
+@pytest.mark.anyio
+async def test_batch_historical_candles_equivalence_with_single_symbol(tmp_path):
+    """Verify get_historical_weekly_candles_batch produces identical results to get_historical_weekly_candles."""
+    calendar = NSETradingCalendar()
+    base_monday = date(2025, 5, 5)
+
+    symbols = ["STOCK_A", "STOCK_B", "STOCK_C"]
+    records = []
+    for w in range(55):
+        w_d = (base_monday + timedelta(weeks=w, days=4)).isoformat()
+        for idx, sym in enumerate(symbols):
+            price_base = 100.0 * (idx + 1) + (w * 3.5)
+            records.append({
+                "date": w_d,
+                "symbol": sym,
+                "series": "EQ",
+                "open": price_base - 2.0,
+                "high": price_base + 5.0,
+                "low": price_base - 4.0,
+                "close": price_base,
+                "volume": 25000 * (idx + 1),
+                "adj_factor_cumulative": 1.0,
+                "adj_close": price_base,
+                "isin": f"INE{idx}00A0101{idx}",
+            })
+
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", [r for r in records if r["date"].startswith("2025")])
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", [r for r in records if r["date"].startswith("2026")])
+
+    last_d = date.fromisoformat(records[-1]["date"])
+    as_of = datetime.combine(last_d, time(18, 0), tzinfo=IST).astimezone(timezone.utc)
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    # 1. Fetch via batch method
+    batch_candles = await provider.get_historical_weekly_candles_batch(symbols, limit_weeks=100)
+
+    # 2. Fetch individually and compare
+    for sym in symbols:
+        single_candles = await provider.get_historical_weekly_candles(sym, limit_weeks=100)
+        assert sym in batch_candles
+        b_list = batch_candles[sym]
+        assert len(b_list) == len(single_candles)
+
+        for c_batch, c_single in zip(b_list, single_candles):
+            assert c_batch.symbol == c_single.symbol
+            assert c_batch.candle_date == c_single.candle_date
+            assert c_batch.open_price == c_single.open_price
+            assert c_batch.high_price == c_single.high_price
+            assert c_batch.low_price == c_single.low_price
+            assert c_batch.close_price == c_single.close_price
+            assert c_batch.volume == c_single.volume
+            assert c_batch.is_completed == c_single.is_completed
+
+        # Compare technical indicators
+        ind_batch = calculate_technical_indicators(sym, b_list)
+        ind_single = calculate_technical_indicators(sym, single_candles)
+        assert ind_batch.twenty_week_sma == ind_single.twenty_week_sma
+        assert ind_batch.weekly_rsi == ind_single.weekly_rsi
+        assert ind_batch.is_valid == ind_single.is_valid
+        assert ind_batch.completed_candles_count == ind_single.completed_candles_count
+
+
+@pytest.mark.anyio
+async def test_batch_candles_single_parquet_read_for_all_symbols(tmp_path):
+    """Verify get_historical_weekly_candles_batch scans each annual Parquet partition only once."""
+    from unittest.mock import patch
+    calendar = NSETradingCalendar()
+    symbols = [f"SYM{i}" for i in range(100)]
+    records = []
+    w_d = "2026-10-23"
+    for sym in symbols:
+        records.append({
+            "date": w_d,
+            "symbol": sym,
+            "series": "EQ",
+            "open": 100.0,
+            "high": 105.0,
+            "low": 95.0,
+            "close": 102.0,
+            "volume": 10000,
+            "adj_factor_cumulative": 1.0,
+            "adj_close": 102.0,
+            "isin": f"INE{sym}",
+        })
+
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", [])
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", records)
+
+    as_of = datetime(2026, 10, 23, 12, 30, tzinfo=timezone.utc)
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    import pyarrow.parquet as pq_module
+    orig_read_table = pq_module.read_table
+    read_table_calls = 0
+
+    def counting_read_table(*args, **kwargs):
+        nonlocal read_table_calls
+        read_table_calls += 1
+        return orig_read_table(*args, **kwargs)
+
+    with patch.object(pq_module, "read_table", side_effect=counting_read_table):
+        batch_results = await provider.get_historical_weekly_candles_batch(symbols, limit_weeks=100)
+
+    # 100 symbols requested: should NOT make 100+ read_table calls!
+    # Expected: exactly 2 calls (one per required year: 2025 and 2026)
+    assert read_table_calls == 2
+    assert len(batch_results) == 100
+
+
+@pytest.mark.anyio
+async def test_full_100_symbol_screener_pipeline_with_tej_provider(tmp_path):
+    """Verify UniverseScreenerService screens 100 constituents end-to-end via TejMarketDataProvider.
+
+    Validates:
+    - All 100 results are returned.
+    - AMFI rank ordering (1..100) is preserved.
+    - Each required Parquet partition is read exactly once during batch candle loading (and at most twice across the full screen).
+    - Screening operation completes successfully without per-symbol N+1 Parquet reads.
+    """
+    from unittest.mock import patch
+    import pyarrow.parquet as pq_module
+
+    calendar = NSETradingCalendar()
+    symbols = [f"SYM{i}" for i in range(1, 101)]
+    constituents = [
+        UniverseConstituent(
+            rank=i,
+            isin=f"INE{i:09d}",
+            company_name=f"Company {i}",
+            source_symbol=f"SYM{i}",
+            canonical_nse_symbol=f"SYM{i}",
+            upstox_instrument_key=f"NSE_EQ|INE{i:09d}",
+        )
+        for i in range(1, 101)
+    ]
+
+    class Mock100UniverseService:
+        def get_status(self, as_of_date=None):
+            from app.schemas.universe import UniverseStatusRead
+            return UniverseStatusRead(
+                is_available=True,
+                is_valid_for_date=True,
+                status="VALID",
+                status_reason="Active and valid",
+                dataset_version="AMFI-2026-H2-V1",
+                classification_period="JUL_DEC_2026",
+                source_period_label="July 2026 - December 2026",
+                effective_from=date(2026, 7, 1),
+                effective_to=date(2026, 12, 31),
+                as_of_date=date(2026, 10, 23),
+                is_stale=False,
+                days_until_expiration=65,
+                constituent_count=100,
+            )
+
+        def get_constituents(self, as_of_date=None):
+            return constituents
+
+    base_monday = date(2025, 10, 6)
+    records = []
+    for w in range(55):
+        w_d = (base_monday + timedelta(weeks=w, days=4)).isoformat()
+        for idx, sym in enumerate(symbols, start=1):
+            p = 100.0 + (w * 2.5) + (idx * 0.1)
+            records.append({
+                "date": w_d,
+                "symbol": sym,
+                "series": "EQ",
+                "open": p - 2.0,
+                "high": p + 5.0,
+                "low": p - 3.0,
+                "close": p,
+                "volume": 20000,
+                "adj_factor_cumulative": 1.0,
+                "adj_close": p,
+                "isin": f"INE{idx:09d}",
+            })
+
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", [r for r in records if r["date"].startswith("2025")])
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", [r for r in records if r["date"].startswith("2026")])
+
+    last_d = date.fromisoformat(records[-1]["date"])
+    as_of = datetime.combine(last_d, time(18, 0), tzinfo=IST).astimezone(timezone.utc)
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    screener = UniverseScreenerService(
+        universe_service=Mock100UniverseService(),
+        provider=provider,
+        calendar=calendar,
+        clock=lambda: as_of,
+    )
+
+    # Track parquet read_table calls
+    orig_read_table = pq_module.read_table
+    partition_read_counts: dict[str, int] = {}
+
+    def counting_read_table(source, *args, **kwargs):
+        from pathlib import Path
+        p_name = Path(source).name if isinstance(source, (str, Path)) else str(source)
+        partition_read_counts[p_name] = partition_read_counts.get(p_name, 0) + 1
+        return orig_read_table(source, *args, **kwargs)
+
+    with patch.object(pq_module, "read_table", side_effect=counting_read_table):
+        screen_res = await screener.screen_universe()
+
+    # 1. All 100 results returned
+    assert screen_res.total_constituents == 100
+    assert len(screen_res.results) == 100
+
+    # 2. AMFI rank ordering preserved
+    assert [r.rank for r in screen_res.results] == list(range(1, 101))
+    assert [r.canonical_nse_symbol for r in screen_res.results] == symbols
+
+    # 3. Each required partition is read at most twice across the entire screening pipeline (1 for batch quotes + 1 for batch candles)
+    # and NEVER 100 times per symbol!
+    assert "prices_adjusted_nse_2025.parquet" in partition_read_counts
+    assert "prices_adjusted_nse_2026.parquet" in partition_read_counts
+    for p_name, count in partition_read_counts.items():
+        assert count <= 2, f"Partition {p_name} was read {count} times (expected <= 2)"
+
+    # 4. Screening completes successfully with qualified results
+    assert screen_res.qualified_count == 100
+
+
+@pytest.mark.anyio
+async def test_screener_diagnostic_isolation_valid_malformed_and_absent_symbols(tmp_path):
+    """Verify diagnostic isolation end-to-end:
+
+    - Symbol A (valid): screened normally and qualifies.
+    - Symbol B (malformed row): receives PROVIDER_ERROR without corrupting A or C.
+    - Symbol C (absent historical depth): receives INSUFFICIENT_HISTORY.
+    """
+    calendar = NSETradingCalendar()
+    symbols = ["SYM_A", "SYM_B", "SYM_C"]
+    constituents = [
+        UniverseConstituent(rank=1, isin="INE001A01001", company_name="Company A", source_symbol="SYM_A", canonical_nse_symbol="SYM_A", upstox_instrument_key="NSE_EQ|INE001A01001"),
+        UniverseConstituent(rank=2, isin="INE002A01002", company_name="Company B", source_symbol="SYM_B", canonical_nse_symbol="SYM_B", upstox_instrument_key="NSE_EQ|INE002A01002"),
+        UniverseConstituent(rank=3, isin="INE003A01003", company_name="Company C", source_symbol="SYM_C", canonical_nse_symbol="SYM_C", upstox_instrument_key="NSE_EQ|INE003A01003"),
+    ]
+
+    class Mock3UniverseService:
+        def get_status(self, as_of_date=None):
+            from app.schemas.universe import UniverseStatusRead
+            return UniverseStatusRead(
+                is_available=True,
+                is_valid_for_date=True,
+                status="VALID",
+                status_reason="Active and valid",
+                dataset_version="AMFI-2026-H2-V1",
+                classification_period="JUL_DEC_2026",
+                source_period_label="July 2026 - December 2026",
+                effective_from=date(2026, 7, 1),
+                effective_to=date(2026, 12, 31),
+                as_of_date=date(2026, 10, 23),
+                is_stale=False,
+                days_until_expiration=65,
+                constituent_count=3,
+            )
+
+        def get_constituents(self, as_of_date=None):
+            return constituents
+
+    base_monday = date(2025, 10, 6)
+    records = []
+    # Symbol A: 55 weeks of valid data with steady uptrend (RSI > 60)
+    for w in range(55):
+        w_d = (base_monday + timedelta(weeks=w, days=4)).isoformat()
+        p = 100.0 + (w * 3.0)
+        records.append({
+            "date": w_d,
+            "symbol": "SYM_A",
+            "series": "EQ",
+            "open": p - 2.0,
+            "high": p + 5.0,
+            "low": p - 3.0,
+            "close": p,
+            "volume": 20000,
+            "adj_factor_cumulative": 1.0,
+            "adj_close": p,
+            "isin": "INE001A01001",
+        })
+
+    # Symbol B: valid latest quote on 2026-10-23, but malformed historical row
+    records.append({
+        "date": "2026-10-23",
+        "symbol": "SYM_B",
+        "series": "EQ",
+        "open": 200.0,
+        "high": 205.0,
+        "low": 195.0,
+        "close": 202.0,
+        "volume": 10000,
+        "adj_factor_cumulative": 1.0,
+        "adj_close": 202.0,
+        "isin": "INE002A01002",
+    })
+    # Corrupted row for SYM_B: unparseable date
+    records.append({
+        "date": "NOT_A_VALID_DATE",
+        "symbol": "SYM_B",
+        "series": "EQ",
+        "open": 190.0,
+        "high": 195.0,
+        "low": 185.0,
+        "close": 192.0,
+        "volume": 10000,
+        "adj_factor_cumulative": 1.0,
+        "adj_close": 192.0,
+        "isin": "INE002A01002",
+    })
+
+    # Symbol C: valid quote on 2026-10-23, but absent historical depth (< 20 completed weeks)
+    records.append({
+        "date": "2026-10-23",
+        "symbol": "SYM_C",
+        "series": "EQ",
+        "open": 50.0,
+        "high": 52.0,
+        "low": 49.0,
+        "close": 51.0,
+        "volume": 5000,
+        "adj_factor_cumulative": 1.0,
+        "adj_close": 51.0,
+        "isin": "INE003A01003",
+    })
+
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2025.parquet", [r for r in records if r["date"].startswith("2025")])
+    create_test_parquet(tmp_path / "prices_adjusted_nse_2026.parquet", [r for r in records if not r["date"].startswith("2025")])
+
+    as_of = datetime.combine(date(2026, 10, 23), time(18, 0), tzinfo=IST).astimezone(timezone.utc)
+
+    provider = TejMarketDataProvider(
+        data_dir=tmp_path,
+        calendar=calendar,
+        clock=lambda: as_of,
+        auto_sync=False,
+    )
+
+    screener = UniverseScreenerService(
+        universe_service=Mock3UniverseService(),
+        provider=provider,
+        calendar=calendar,
+        clock=lambda: as_of,
+    )
+
+    screen_res = await screener.screen_universe()
+    assert screen_res.total_constituents == 3
+    results_by_sym = {r.canonical_nse_symbol: r for r in screen_res.results}
+
+    # Verify Symbol A is screened normally and qualifies
+    res_a = results_by_sym["SYM_A"]
+    assert res_a.is_qualified is True
+    assert res_a.diagnostic_status == "QUALIFIED"
+    assert res_a.weekly_rsi is not None and res_a.weekly_rsi > Decimal("60.00")
+
+    # Verify Symbol B receives PROVIDER_ERROR due to malformed row
+    res_b = results_by_sym["SYM_B"]
+    assert res_b.is_qualified is False
+    assert res_b.diagnostic_status == "PROVIDER_ERROR"
+    assert "provider error" in res_b.diagnostic_reason.lower()
+
+    # Verify Symbol C receives INSUFFICIENT_HISTORY due to absent historical depth
+    res_c = results_by_sym["SYM_C"]
+    assert res_c.is_qualified is False
+    assert res_c.diagnostic_status == "INSUFFICIENT_HISTORY"
+    assert "insufficient" in res_c.diagnostic_reason.lower()

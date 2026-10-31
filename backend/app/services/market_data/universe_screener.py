@@ -237,31 +237,56 @@ class UniverseScreenerService:
                 "Market data is currently unavailable from provider for universe constituents."
             )
 
-        # B. Bounded concurrent weekly candle fetch and indicator derivation
-        semaphore = asyncio.Semaphore(self._concurrency_limit)
+        # B. Batch historical weekly candle retrieval and indicator derivation
+        indicator_map: dict[str, tuple[TechnicalIndicators | None, str | None]] = {}
+        symbols_to_fetch: list[str] = []
 
-        async def _fetch_indicators(symbol: str) -> tuple[TechnicalIndicators | None, str | None]:
-            async with semaphore:
-                ind_cache_key = f"indicators:{symbol}"
-                cached_ind = self._indicator_cache.get(ind_cache_key, now=now_utc)
-                if cached_ind is not None and isinstance(cached_ind, TechnicalIndicators):
-                    return cached_ind, None
+        # 1. Reuse existing valid indicators from cache
+        for sym in symbols:
+            ind_cache_key = f"indicators:{sym}"
+            cached_ind = self._indicator_cache.get(ind_cache_key, now=now_utc)
+            if cached_ind is not None and isinstance(cached_ind, TechnicalIndicators):
+                indicator_map[sym] = (cached_ind, None)
+            else:
+                symbols_to_fetch.append(sym)
 
-                try:
-                    candles = await self._provider.get_historical_weekly_candles(symbol, limit_weeks=100)
-                    indicators = calculate_technical_indicators(symbol, candles)
-                    if indicators.is_valid:
-                        # Indicators from completed weekly candles are cached with long TTL
-                        candle_ttl = float(self._settings.upstox_weekly_candle_ttl_seconds)
-                        self._indicator_cache.set(ind_cache_key, indicators, ttl_seconds=candle_ttl, now=now_utc)
-                    return indicators, None
-                except Exception as exc:
-                    logger.warning("Historical weekly candle fetch failed for %s: %s", symbol, exc)
-                    return None, "PROVIDER_ERROR"
+        # 2. Batch-load historical weekly candles only for uncached symbols
+        batch_candles: dict[str, list[WeeklyCandle]] = {}
+        if symbols_to_fetch:
+            try:
+                batch_candles = await self._provider.get_historical_weekly_candles_batch(
+                    symbols_to_fetch,
+                    limit_weeks=100,
+                    concurrency_limit=self._concurrency_limit,
+                )
+            except (ProviderAuthenticationError, RateLimitExceededError, MarketDataUnavailableError):
+                raise
+            except Exception as exc:
+                logger.error("Batch historical weekly candle retrieval failed: %s", exc)
+                for sym in symbols_to_fetch:
+                    indicator_map[sym] = (None, "PROVIDER_ERROR")
 
-        indicator_tasks = [_fetch_indicators(sym) for sym in symbols]
-        indicator_results = await asyncio.gather(*indicator_tasks)
-        indicator_map = dict(zip(symbols, indicator_results))
+        # 3. Calculate technical indicators for uncached symbols
+        for sym in symbols_to_fetch:
+            if sym in indicator_map:
+                continue
+
+            if sym not in batch_candles:
+                indicator_map[sym] = (None, "PROVIDER_ERROR")
+                continue
+
+            candles = batch_candles[sym]
+            try:
+                indicators = calculate_technical_indicators(sym, candles)
+                if indicators.is_valid:
+                    candle_ttl = float(self._settings.upstox_weekly_candle_ttl_seconds)
+                    self._indicator_cache.set(
+                        f"indicators:{sym}", indicators, ttl_seconds=candle_ttl, now=now_utc
+                    )
+                indicator_map[sym] = (indicators, None)
+            except Exception as exc:
+                logger.warning("Technical indicator calculation failed for %s: %s", sym, exc)
+                indicator_map[sym] = (None, "PROVIDER_ERROR")
 
         # C. Evaluate each constituent strictly against established trading rules
         results: list[ConstituentScreenResult] = []

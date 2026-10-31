@@ -1,7 +1,10 @@
+import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+
+from app.services.market_data.errors import InstrumentNotFoundError
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,3 +85,33 @@ class MarketDataProvider(ABC):
                 pass
         return results
 
+    async def get_historical_weekly_candles_batch(
+        self,
+        symbols: list[str],
+        limit_weeks: int = 100,
+        concurrency_limit: int = 10,
+    ) -> dict[str, list[WeeklyCandle]]:
+        """Fetch historical weekly candles for multiple symbols.
+
+        Default implementation retrieves candles concurrently with bounded concurrency.
+        Providers may override this with an optimized batch query where supported.
+        """
+        semaphore = asyncio.Semaphore(max(1, concurrency_limit))
+
+        async def _fetch(sym: str) -> tuple[str, list[WeeklyCandle] | None]:
+            async with semaphore:
+                try:
+                    candles = await self.get_historical_weekly_candles(sym, limit_weeks=limit_weeks)
+                    return sym, candles
+                except InstrumentNotFoundError:
+                    return sym, []
+                except Exception:
+                    return sym, None
+
+        tasks = [_fetch(sym) for sym in symbols]
+        items = await asyncio.gather(*tasks)
+        results: dict[str, list[WeeklyCandle]] = {}
+        for sym, candles in items:
+            if candles is not None:
+                results[sym] = candles
+        return results
